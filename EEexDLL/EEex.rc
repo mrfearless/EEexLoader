@@ -1,0 +1,3 @@
+#include "Res/EEexVer.rc"
+#include "Res/EEexRes.rc"
+ 
