@@ -73,4 +73,4 @@ The projects can be compiled with the [RadASM IDE](http://www.softpedia.com/get/
 
 # Download
 
-The latest downloadable release is available [here](https://github.com/mrfearless/libraries/blob/master/release/EEexLoader.zip?raw=true)
+The latest downloadable release is available [here](https://github.com/mrfearless/EEexLoader/blob/master/Release/EEexLoader.zip?raw=true)
