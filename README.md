@@ -50,7 +50,7 @@ The projects can be compiled with the [RadASM IDE](http://www.softpedia.com/get/
 \MASM32\BIN\RC.EXE /v EEex.rc
 ```
 ```
-\MASM32\BIN\ML.EXE /c /coff /Cp /nologo /I"MASM32\INCLUDE" /LIBPATH:"\MASM32\LIB" EEex.asm
+\MASM32\BIN\ML.EXE /c /coff /Cp /nologo /I"\MASM32\INCLUDE" /LIBPATH:"\MASM32\LIB" EEex.asm
 ```
 ```
 \MASM32\BIN\LINK.EXE /SUBSYSTEM:WINDOWS /RELEASE /VERSION:4.0 /LIBPATH:"\MASM32\LIB" /OUT:"EEex.exe" EEex.obj EEex.res
@@ -65,7 +65,7 @@ The projects can be compiled with the [RadASM IDE](http://www.softpedia.com/get/
 \MASM32\BIN\RC.EXE /v EEex.rc
 ```
 ```
-\MASM32\BIN\ML.EXE /c /coff /Cp /nologo /I"MASM32\INCLUDE" /LIBPATH:"\MASM32\LIB" EEex.asm
+\MASM32\BIN\ML.EXE /c /coff /Cp /nologo /I"\MASM32\INCLUDE" /LIBPATH:"\MASM32\LIB" EEex.asm
 ```
 ```
 \MASM32\BIN\LINK.EXE /SUBSYSTEM:WINDOWS /RELEASE /DLL /VERSION:4.0 /LIBPATH:"\MASM32\LIB" /OUT:"EEex.dll" EEex.obj EEex.res
