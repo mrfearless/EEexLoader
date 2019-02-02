@@ -8,15 +8,19 @@
 ;------------------------------------------------------------------------------
 ; EEexLog Prototypes
 ;------------------------------------------------------------------------------
-LogOpen                 PROTO :DWORD
-LogClose                PROTO
-LogMessage              PROTO :DWORD, :DWORD, :DWORD
-LogMessageAndValue      PROTO :DWORD, :DWORD
-LogValueToString        TEXTEQU <EEexDwordToAscii>
-
+LogOpen                 PROTO :DWORD                 ; bAppend
+LogClose                PROTO                        ;
+LogMessage              PROTO :DWORD, :DWORD, :DWORD ; lpszLogMessage, LogMsgType, IndentLevel
+LogMessageAndValue      PROTO :DWORD, :DWORD         ; lpszLogMessage, dwLogValue
+LogMessageAndHexValue   PROTO :DWORD, :DWORD         ;
+ 
+LogValueToString        TEXTEQU <EEexDwordToAscii>   ; dwValue:DWORD, lpszAsciiString (EEexDwordToAscii is in EEex.asm)
+LogValueToHexString     TEXTEQU <EEexDwordToAsciiHex>; dwValue:DWORD, lpszAsciiHexString, bUppercase (EEexDwordToAsciiHex is in EEex.asm)
 
 .CONST
+;---------------------------
 ; LogMessage LogMsgType Enum:
+;---------------------------
 LOG_STANDARD            EQU 0
 LOG_INFO                EQU 1
 LOG_ERROR               EQU 2
@@ -50,7 +54,9 @@ szLog_LogInfo           DB "[*] ",0
 szLog_LogError          DB "[!] ",0
 szLog_LogValue          DB "[=] ",0
 
+;---------------------------
 ; Log Buffers
+;---------------------------
 szLog_Day               DB 4 DUP (0)
 szLog_Month             DB 4 DUP (0)
 szLog_Year              DB 8 DUP (0)
@@ -59,6 +65,7 @@ szLog_Minute            DB 4 DUP (0)
 szLog_Second            DB 4 DUP (0)
 szLogDate               DB 32 DUP (0)
 szLogTime               DB 32 DUP (0)
+szLogValue              DB 32 DUP (0)
 szLogEntry              DB 512 DUP (0)
 
 
@@ -70,6 +77,9 @@ szLogEntry              DB 512 DUP (0)
 ; Returns: handle to log file
 ;------------------------------------------------------------------------------
 LogOpen PROC bAppend:DWORD
+    .IF gEEexLog == FALSE
+        ret
+    .ENDIF
     .IF hLogFile != INVALID_HANDLE_VALUE ; log already opened?
         ret
     .ENDIF
@@ -97,6 +107,9 @@ LogOpen ENDP
 ; Returns: none
 ;------------------------------------------------------------------------------
 LogClose PROC
+    .IF gEEexLog == FALSE
+        ret
+    .ENDIF
     Invoke LogMessage, 0, LOG_CLOSE, 0
     .IF hLogFile != INVALID_HANDLE_VALUE
         Invoke CloseHandle, hLogFile
@@ -195,7 +208,10 @@ LogMessage PROC lpszLogMessage:DWORD, LogMsgType:DWORD, IndentLevel:DWORD
     LOCAL BytesToWrite:DWORD
     LOCAL BytesWritten:DWORD
     LOCAL Indent:DWORD
-
+    
+    .IF gEEexLog == FALSE
+        ret
+    .ENDIF
     .IF hLogFile == INVALID_HANDLE_VALUE
         ret
     .ENDIF
@@ -284,19 +300,38 @@ LogMessage endp
 ; LogMessageAndValue
 ;--------------------------------------------------------------------------------------
 LogMessageAndValue PROC lpszLogMessage:DWORD, dwLogValue:DWORD
-    LOCAL szValue[16]:BYTE
-    
+    .IF gEEexLog == FALSE
+        ret
+    .ENDIF
     .IF lpszLogMessage != 0
         Invoke LogMessage, lpszLogMessage, LOG_NONEWLINE, 0
     .ENDIF
-    Invoke LogValueToString, dwLogValue, Addr szValue
-    Invoke LogMessage, Addr szValue, LOG_MSGVALUE, 0
+    Invoke LogValueToString, dwLogValue, Addr szLogValue
+    Invoke LogMessage, Addr szLogValue, LOG_MSGVALUE, 0
     xor eax, eax
     ret
 LogMessageAndValue ENDP
 
 
-
+;--------------------------------------------------------------------------------------
+; LogMessageAndHexValue
+;--------------------------------------------------------------------------------------
+LogMessageAndHexValue PROC lpszLogMessage:DWORD, dwLogValue:DWORD
+    .IF gEEexLog == FALSE
+        ret
+    .ENDIF
+    .IF lpszLogMessage != 0
+        Invoke LogMessage, lpszLogMessage, LOG_NONEWLINE, 0
+    .ENDIF
+    .IF gEEexHex == TRUE
+        Invoke LogValueToHexString, dwLogValue, Addr szLogValue, gEEexHexUppercase
+    .ELSE
+        Invoke LogValueToString, dwLogValue, Addr szLogValue
+    .ENDIF
+    Invoke LogMessage, Addr szLogValue, LOG_MSGVALUE, 0
+    xor eax, eax
+    ret
+LogMessageAndHexValue ENDP
 
 
 
