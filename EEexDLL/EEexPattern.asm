@@ -276,10 +276,10 @@ PATTERN                 <0, 0, Offset P_Lua_setglobal,    P_Lua_setglobalLen,   
 PATTERN                 <0, 0, Offset P_LuaL_loadstring,  P_LuaL_loadstringLen,  0,                      V_LuaL_loadstringLen,  -20,   0, Offset Func_LuaL_loadstring>
 PATTERN                 <0, 0, Offset P__ftol2_sse,       P__ftol2_sseLen,       0,                      V__ftol2_sseLen,        -7,   0, Offset Func__ftol2_sse>
 
-PATTERN                 <0, 1, Offset P_g_pChitin,        P_g_pChitinLen,        0,                      0,                      11,   0, Offset p_pChitin>
-PATTERN                 <0, 1, Offset P_g_pBaldurChitin,  P_g_pBaldurChitinLen,  0,                      0,                      11,   0, Offset p_pBaldurChitin>
-PATTERN                 <0, 1, Offset P_g_backgroundMenu, P_g_backgroundMenuLen, 0,                      0,                     -23,   0, Offset p_backgroundMenu>
-PATTERN                 <0, 1, Offset P_g_overlayMenu,    P_g_overlayMenuLen,    0,                      0,                     -13,   0, Offset p_overlayMenu>
+PATTERN                 <0, 1, Offset P_g_pChitin,        P_g_pChitinLen,        0,                      0,                      11,   0, Offset pp_pChitin>
+PATTERN                 <0, 1, Offset P_g_pBaldurChitin,  P_g_pBaldurChitinLen,  0,                      0,                      11,   0, Offset pp_pBaldurChitin>
+PATTERN                 <0, 1, Offset P_g_backgroundMenu, P_g_backgroundMenuLen, 0,                      0,                     -23,   0, Offset pp_backgroundMenu>
+PATTERN                 <0, 1, Offset P_g_overlayMenu,    P_g_overlayMenuLen,    0,                      0,                     -13,   0, Offset pp_overlayMenu>
 ELSE
 
 ; PATTERN Structure:     F  T  PatBytes                   PatLength              VerBytes                VerLength              PAdj VAdj FuncAddress
