@@ -18,6 +18,7 @@ Ver.rc=1
 7=EEexLog.asm
 8=Notes.txt
 9=EEexLua.asm
+10=
 [MakeFiles]
 0=EEex.rap
 1=EEex.rc
@@ -66,8 +67,9 @@ Group=Assembly,Resources
 7=1
 8=2
 9=1
+10=
 [AutoLoad]
-AutoLoad=1,2,9,6,4,7,8
+AutoLoad=2,9,6,7,8,4,1
 [VersionControl]
 Settings=1279
 Milestones=129
@@ -78,7 +80,7 @@ MilestoneOnTime=2
 MilestoneOnDate=0
 MilestoneOnDateWhen=1
 MilestoneOnDateStatus=0
-MilestoneOnDateDate=2
+MilestoneOnDateDate=7
 MilestoneOnDateTimeYear=2019
 MilestoneOnDateTimeMonth=1
 MilestoneOnDateTimeDate=26
@@ -102,7 +104,7 @@ ProductVer2Range=0
 ProductVer3Range=0
 ProductVer4Range=0
 [PTimer]
-PTimer=178186762
+PTimer=291414159
 [GroupExpand]
 GroupExpand=1,1,0
 [BookMark]
@@ -129,52 +131,55 @@ GroupExpand=1,1,0
 7=
 8=
 9=
+10=
 [VerInf]
 Nme=VERINF1
 ID=1
-FV=1.0.0.1
-PV=1.0.0.1
+FV=1.0.0.2
+PV=1.0.0.2
 VerOS=0x00000004
 VerFT=0x00000002
 VerLNG=0x00000409
 VerCHS=0x000004B0
-ProductVersion=1.0.0.1
+ProductVersion=1.0.0.2
 ProductName=EEex.dll
 OriginalFilename=EEex.dll
 LegalTrademarks=fearless
 LegalCopyright=fearless
 InternalName=EEex.dll
 FileDescription=EEex.dll
-FileVersion=1.0.0.1
+FileVersion=1.0.0.2
 CompanyName=fearless
 [Collapse]
 3=
 4=17408
 5=
-1=138559604,2,537395200,38,655368
-6=2147482477,2147483647,2147483647,159
+1=520355892,4194312,33,,34209808,1310720
+6=2080309231,79
 2=
 7=75628616,1
 8=
-9=33695
+9=12591850,16
+10=6
 [Size]
 3=0,0,0,0,53
-4=0,0,0,0,12739
+4=0,0,0,0,76109
 5=0,0,0,0,1274
-1=0,0,0,0,843
-6=0,0,0,0,5124
-2=0,0,0,0,1232
-7=0,0,0,0,11013
+1=0,0,1248,579,82708
+6=0,0,0,0,11155
+2=0,0,0,0,2503
+7=0,0,0,0,1222
 8=0,0,0,0,62
-9=0,0,0,0,6523
+9=0,0,0,0,1305
+10=0,0,0,0,1822
 [Find]
-1="INFO_ADDRESSES"
-2="gEEexHex"
-3="gEEexHexUppercase"
-4="Pattern matching for lua functions"
-5="gEEexLua"
-6="INI_NORMAL"
-7="bFallbackFunctions"
-8="bVerifyFunctions"
-9=" bFallback:DWORD^M    .IF bFallback == TRUE^M^M    .ELSE"
-10="Invoke IniValueToHexString"
+1="szIni"
+2="szIni_"
+3="szIniEEex"
+4=", INI_FALLBACK"
+5="Invoke IniGet"
+6="EEexWriteFunctionsToIni"
+7="szIniGet"
+8=", INI_NORMAL"
+9="gEEexLog"
+10="P_CAIObjectTypeOpEqu2"

@@ -18,6 +18,13 @@ LogValueToString        TEXTEQU <EEexDwordToAscii>   ; dwValue:DWORD, lpszAsciiS
 LogValueToHexString     TEXTEQU <EEexDwordToAsciiHex>; dwValue:DWORD, lpszAsciiHexString, bUppercase (EEexDwordToAsciiHex is in EEex.asm)
 
 .CONST
+; LogLevel Enum:
+LOGLEVEL_NONE           EQU 0 
+LOGLEVEL_BASIC          EQU 1
+LOGLEVEL_DETAIL         EQU 2
+LOGLEVEL_DEBUG          EQU 3
+
+
 ;---------------------------
 ; LogMessage LogMsgType Enum:
 ;---------------------------
@@ -72,12 +79,13 @@ szLogEntry              DB 512 DUP (0)
 .CODE
 
 
+EEEX_ALIGN
 ;------------------------------------------------------------------------------
 ; LogOpen - opens the log file with optional append to existing log
 ; Returns: handle to log file
 ;------------------------------------------------------------------------------
 LogOpen PROC bAppend:DWORD
-    .IF gEEexLog == FALSE
+    .IF gEEexLog == LOGLEVEL_NONE
         ret
     .ENDIF
     .IF hLogFile != INVALID_HANDLE_VALUE ; log already opened?
@@ -102,15 +110,16 @@ LogOpen PROC bAppend:DWORD
 LogOpen ENDP
 
 
+EEEX_ALIGN
 ;------------------------------------------------------------------------------
 ; LogClose - close log file
 ; Returns: none
 ;------------------------------------------------------------------------------
 LogClose PROC
-    .IF gEEexLog == FALSE
+    .IF gEEexLog == LOGLEVEL_NONE
         ret
     .ENDIF
-    Invoke LogMessage, 0, LOG_CLOSE, 0
+    ;Invoke LogMessage, 0, LOG_CLOSE, 0
     .IF hLogFile != INVALID_HANDLE_VALUE
         Invoke CloseHandle, hLogFile
     .ENDIF
@@ -120,6 +129,7 @@ LogClose PROC
 LogClose ENDP
 
 
+EEEX_ALIGN
 ;--------------------------------------------------------------------------------------
 ; LogDateTime
 ;--------------------------------------------------------------------------------------
@@ -201,6 +211,7 @@ LogDateTime PROC USES EBX lpszDate:DWORD, lpszTime:DWORD
 LogDateTime endp
 
 
+EEEX_ALIGN
 ;--------------------------------------------------------------------------------------
 ; LogMessage
 ;--------------------------------------------------------------------------------------
@@ -209,7 +220,7 @@ LogMessage PROC lpszLogMessage:DWORD, LogMsgType:DWORD, IndentLevel:DWORD
     LOCAL BytesWritten:DWORD
     LOCAL Indent:DWORD
     
-    .IF gEEexLog == FALSE
+    .IF gEEexLog == LOGLEVEL_NONE
         ret
     .ENDIF
     .IF hLogFile == INVALID_HANDLE_VALUE
@@ -296,11 +307,12 @@ LogMessage PROC lpszLogMessage:DWORD, LogMsgType:DWORD, IndentLevel:DWORD
 LogMessage endp
 
 
+EEEX_ALIGN
 ;--------------------------------------------------------------------------------------
 ; LogMessageAndValue
 ;--------------------------------------------------------------------------------------
 LogMessageAndValue PROC lpszLogMessage:DWORD, dwLogValue:DWORD
-    .IF gEEexLog == FALSE
+    .IF gEEexLog == LOGLEVEL_NONE
         ret
     .ENDIF
     .IF lpszLogMessage != 0
@@ -313,11 +325,12 @@ LogMessageAndValue PROC lpszLogMessage:DWORD, dwLogValue:DWORD
 LogMessageAndValue ENDP
 
 
+EEEX_ALIGN
 ;--------------------------------------------------------------------------------------
 ; LogMessageAndHexValue
 ;--------------------------------------------------------------------------------------
 LogMessageAndHexValue PROC lpszLogMessage:DWORD, dwLogValue:DWORD
-    .IF gEEexLog == FALSE
+    .IF gEEexLog == LOGLEVEL_NONE
         ret
     .ENDIF
     .IF lpszLogMessage != 0

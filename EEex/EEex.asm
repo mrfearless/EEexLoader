@@ -24,7 +24,7 @@ include EEex.inc
 
 CHECK_EXE_FILEVERSION       EQU 1 ; uncomment for exe file version checks
 CHECK_EEexDLL_EXISTS        EQU 1 ; uncomment to check if EEex.dll exists
-CHECK_OVERRIDE_FILES        EQU 1 ; uncomment to check if override files exists
+;CHECK_OVERRIDE_FILES        EQU 1 ; uncomment to check if override files exists
 
 .code
 
