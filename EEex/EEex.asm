@@ -220,17 +220,37 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
     .ENDIF
     ENDIF
     
+    ;--------------------------------------------------------------------------
+    ; check M__EEex.lua in override folder
+    ;--------------------------------------------------------------------------    
+    Invoke GetCurrentDirectory, SIZEOF szCurrentFolder, Addr szCurrentFolder
+    Invoke lstrcpy, Addr szEEGameOverrideFolder, Addr szCurrentFolder
+    Invoke lstrcat, Addr szEEGameOverrideFolder, Addr szOverride
+    
+    Invoke lstrcpy, Addr szFileM__EEexlua, Addr szEEGameOverrideFolder
+    Invoke lstrcat, Addr szFileM__EEexlua, Addr szM__EEexlua    
+    IFDEF DEBUG32
+    PrintString szEEGameOverrideFolder
+    PrintString szFileM__EEexlua
+    ENDIF
+    Invoke GetFileAttributes, Addr szFileM__EEexlua
+    .IF eax == INVALID_FILE_ATTRIBUTES
+        Invoke GetLastError
+        .IF eax == ERROR_FILE_NOT_FOUND
+            IFDEF DEBUG32
+            PrintText 'M__EEex.lua is missing in the override folder - cannot continue.'
+            ENDIF
+            Invoke DisplayErrorMessage, Addr szErrorM__EEexMissing, 0
+            ret
+        .ENDIF
+    .ENDIF    
     
     ;--------------------------------------------------------------------------
     ; check UI.menu, TRIGGER.ids, OBJECT.ids and ACTION.ids in override folder
     ;--------------------------------------------------------------------------
     IFDEF CHECK_OVERRIDE_FILES
-    Invoke GetCurrentDirectory, SIZEOF szCurrentFolder, Addr szCurrentFolder
-    Invoke lstrcpy, Addr szEEGameOverrideFolder, Addr szCurrentFolder
-    Invoke lstrcat, Addr szEEGameOverrideFolder, Addr szOverride
     Invoke lstrcpy, Addr szFileUImenu, Addr szEEGameOverrideFolder
     Invoke lstrcat, Addr szFileUImenu, Addr szUImenu
-    
     Invoke lstrcpy, Addr szFileTRIGGERids, Addr szEEGameOverrideFolder
     Invoke lstrcat, Addr szFileTRIGGERids, Addr szTRIGGERids
     Invoke lstrcpy, Addr szFileOBJECTids, Addr szEEGameOverrideFolder

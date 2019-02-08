@@ -236,7 +236,7 @@ P_CGameSpriteGetKit     DB 0C1h, 0E0h, 10h, 0Bh, 0C1h, 0C3h
 P_CGameSpriteGetKitLen  EQU $-P_CGameSpriteGetKit
 P_CGameSpriteGetName    DB 89h,45h,0FCh,56h,8Bh,0F1h,83h,0BEh,1Ch,04h,00h,00h,0FFh
 P_CGameSpriteGetNameLen EQU $-P_CGameSpriteGetName
-P_CGameSpriteGetQuickButtons DB 53h,56h,57h,8Bh,80h,14h,0Dh,00h,00h,8Bh,0F9h,6Ah,20h,89h,0BDh,7Ch,0FFh,0FFh,0FFh,89h,85h,68h,0FFh,0FFh,0FFh
+P_CGameSpriteGetQuickButtons DB 8Dh,0B7h,80h,0Ah,00h,00h,33h,0DBh,89h,75h,88h,8Bh,0F7h,8Bh,7Dh,88h,89h,5Dh,84h,8Dh,49h,00h
 P_CGameSpriteGetQuickButtonsLen EQU $-P_CGameSpriteGetQuickButtons
 P_CGameSpriteMemorizeSpell DB 8Bh,5Dh,18h,89h,45h,0E4h,8Bh,45h,0Ch,56h,8Bh,0F1h,89h,45h,0E8h
 P_CGameSpriteMemorizeSpellLen EQU $-P_CGameSpriteMemorizeSpell
@@ -657,7 +657,7 @@ PATTERN   <0, 0, Offset P_CGameSpriteRenderHealthBar, P_CGameSpriteRenderHealthB
 PATTERN   <0, 0, Offset P_CGameSpriteSetColor, P_CGameSpriteSetColorLen,0,                 0,                      -7,   0, Offset F_EE_CGameSpriteSetColor, Offset szCGameSpriteSetColor>
 PATTERN   <0, 0, Offset P_CGameSpriteGetKit,P_CGameSpriteGetKitLen, 0,                     0,                     -14,   0, Offset F_EE_CGameSpriteGetKit,   Offset szCGameSpriteGetKit>
 PATTERN   <0, 0, Offset P_CGameSpriteGetName, P_CGameSpriteGetNameLen, 0,                  0,                     -13,   0, Offset F_EE_CGameSpriteGetName,  Offset szCGameSpriteGetName>
-PATTERN   <0, 0, Offset P_CGameSpriteGetQuickButtons, P_CGameSpriteGetQuickButtonsLen, 0,  0,                     -24,   0, Offset F_EE_CGameSpriteGetQuickButtons, Offset szCGameSpriteGetQuickButtons>
+PATTERN   <0, 0, Offset P_CGameSpriteGetQuickButtons, P_CGameSpriteGetQuickButtonsLen, 0,  0,                    -138,   0, Offset F_EE_CGameSpriteGetQuickButtons, Offset szCGameSpriteGetQuickButtons>
 PATTERN   <0, 0, Offset P_CGameSpriteCGameSprite, P_CGameSpriteCGameSpriteLen,0,           0,                     -25,   0, Offset F_EE_CGameSpriteCGameSprite, Offset szCGameSpriteCGameSprite>
 PATTERN   <0, 0, Offset P_CGameSpriteSetCTT,P_CGameSpriteSetCTTLen,0,                      0,                     -95,   0, Offset F_EE_CGameSpriteSetCTT,   Offset szCGameSpriteSetCTT>
 ; CInfinity
@@ -783,7 +783,7 @@ PATTERN   <0, 0, Offset P_CGameSpriteRenderHealthBar, P_CGameSpriteRenderHealthB
 PATTERN   <0, 0, Offset P_CGameSpriteSetColor, P_CGameSpriteSetColorLen,0,                 0,                      -7,   0, Offset F_EE_CGameSpriteSetColor, Offset szCGameSpriteSetColor>
 PATTERN   <0, 0, Offset P_CGameSpriteGetKit,P_CGameSpriteGetKitLen, 0,                     0,                     -14,   0, Offset F_EE_CGameSpriteGetKit,   Offset szCGameSpriteGetKit>
 PATTERN   <0, 0, Offset P_CGameSpriteGetName, P_CGameSpriteGetNameLen, 0,                  0,                     -13,   0, Offset F_EE_CGameSpriteGetName,  Offset szCGameSpriteGetName>
-PATTERN   <0, 0, Offset P_CGameSpriteGetQuickButtons, P_CGameSpriteGetQuickButtonsLen, 0,  0,                     -24,   0, Offset F_EE_CGameSpriteGetQuickButtons, Offset szCGameSpriteGetQuickButtons>
+PATTERN   <0, 0, Offset P_CGameSpriteGetQuickButtons, P_CGameSpriteGetQuickButtonsLen, 0,  0,                    -138,   0, Offset F_EE_CGameSpriteGetQuickButtons, Offset szCGameSpriteGetQuickButtons>
 PATTERN   <0, 0, Offset P_CGameSpriteCGameSprite, P_CGameSpriteCGameSpriteLen,0,           0,                     -25,   0, Offset F_EE_CGameSpriteCGameSprite, Offset szCGameSpriteCGameSprite>
 PATTERN   <0, 0, Offset P_CGameSpriteSetCTT,P_CGameSpriteSetCTTLen,0,                      0,                     -95,   0, Offset F_EE_CGameSpriteSetCTT,   Offset szCGameSpriteSetCTT>
 ; CInfinity

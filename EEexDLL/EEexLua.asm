@@ -72,6 +72,10 @@ EEEX_ALIGN
 ; Devnote: This function must be PROTO C
 ;------------------------------------------------------------------------------
 EEexLuaInit PROC C lua_State:DWORD, lpszString:DWORD
+
+    IFDEF DEBUG32
+    PrintText 'EEexLuaInit'
+    ENDIF
     
     ; Get g_lua from p_lua whilst game is running
     ; g_lua is used in lua function calls in EEexLua.asm
@@ -151,6 +155,10 @@ EEexLuaInit PROC C lua_State:DWORD, lpszString:DWORD
     ;--------------------------------------------------------------------------
     ; Register the Lua EEex_Init
     ;--------------------------------------------------------------------------
+    IFDEF DEBUG32
+    PrintText 'Invoke EEexLuaRegisterFunction, Addr EEex_Init, Addr szEEex_Init'
+    ENDIF    
+    
     Invoke EEexLuaRegisterFunction, Addr EEex_Init, Addr szEEex_Init
     IFDEF EEEX_LOGGING
     .IF gEEexLog >= LOGLEVEL_DEBUG
@@ -158,6 +166,9 @@ EEexLuaInit PROC C lua_State:DWORD, lpszString:DWORD
         Invoke LogMessageAndHexValue, 0, Addr EEex_Init
     .ENDIF    
     ENDIF
+    IFDEF DEBUG32
+    PrintText 'Invoke F_LuaL_loadstring, lua_State, lpszString ; EE lua function'
+    ENDIF        
     Invoke F_LuaL_loadstring, lua_State, lpszString ; EE lua function
     ret
 EEexLuaInit ENDP
@@ -186,7 +197,11 @@ OPTION EPILOGUE:NONE
 EEex_Init PROC C arg:VARARG
     push ebp
     mov ebp, esp
-
+    
+    
+    IFDEF DEBUG32
+    PrintText 'EEex_Init'
+    ENDIF
     IFDEF EEEX_LOGGING
     .IF gEEexLog >= LOGLEVEL_DEBUG
         Invoke LogMessage, 0, LOG_CRLF, 0
@@ -209,11 +224,11 @@ EEex_Init PROC C arg:VARARG
     .ENDIF
     ENDIF
     
-;    Invoke EEexLuaRegisterFunction, Addr EEex_Call, Addr szEEex_Call
-;    IFDEF EEEX_LOGGING
-;    Invoke LogMessage, CTEXT("Register Function -  EEex_Call"), LOG_NONEWLINE, 1
-;    Invoke LogMessageAndHexValue, 0, Addr EEex_Call
-;    ENDIF
+    Invoke EEexLuaRegisterFunction, Addr EEex_Call, Addr szEEex_Call
+    IFDEF EEEX_LOGGING
+    Invoke LogMessage, CTEXT("Register Function -  EEex_Call"), LOG_NONEWLINE, 1
+    Invoke LogMessageAndHexValue, 0, Addr EEex_Call
+    ENDIF
     
     
     Invoke EEexLuaRegisterFunction, Addr EEex_LuaFunctions, Addr szEEex_LuaFunctions
@@ -235,12 +250,12 @@ EEex_Init PROC C arg:VARARG
     .IF gEEexLog >= LOGLEVEL_DEBUG
         Invoke LogMessage, CTEXT("Register Function -  EEex_GameGlobals"), LOG_NONEWLINE, 1
         Invoke LogMessageAndHexValue, 0, Addr EEex_GameGlobals
-        Invoke LogMessage, 0, LOG_CRLF, 0
     .ENDIF
     ENDIF
     
     IFDEF EEEX_LOGGING
     .IF gEEexLog >= LOGLEVEL_DEBUG
+        Invoke LogMessage, 0, LOG_CRLF, 0
         Invoke LogMessage, CTEXT("VirtualAlloc 4096 bytes"), LOG_INFO, 0
         Invoke LogMessage, 0, LOG_CRLF, 0
     .ENDIF
@@ -250,6 +265,10 @@ EEex_Init PROC C arg:VARARG
     .ENDIF
     ENDIF
     ENDIF
+    
+    IFDEF DEBUG32
+    PrintText 'VirtualAlloc'
+    ENDIF    
     
     Invoke VirtualAlloc, 0, 1000h, MEM_COMMIT or MEM_RESERVE, PAGE_EXECUTE_READWRITE
     push eax
@@ -325,6 +344,11 @@ OPTION EPILOGUE:NONE
 EEex_ExposeToLua PROC C arg:VARARG
     push ebp
     mov ebp, esp
+    
+    IFDEF DEBUG32
+    PrintText 'EEex_ExposeToLua'
+    ENDIF        
+    
     IFDEF EEEX_LOGGING
     IFDEF EEEX_LOGLUACALLS
     .IF gEEexLog >= LOGLEVEL_DEBUG
@@ -508,7 +532,7 @@ EEEX_ALIGN
 ; EEex_LuaFunctions()
 ;------------------------------------------------------------------------------
 EEex_LuaFunctions PROC C lua_State:DWORD
-
+    
     IFDEF EEEX_LOGGING
     IFDEF EEEX_LOGLUACALLS
     .IF gEEexLog >= LOGLEVEL_DEBUG
@@ -518,80 +542,105 @@ EEex_LuaFunctions PROC C lua_State:DWORD
     ENDIF
 
     Invoke F_Lua_createtablex, lua_State
-    
-    Invoke F_Lua_pushnumber, lua_State, PatchLocation
+
     Invoke F_Lua_pushstring, lua_State, CTEXT("PatchLocation")
-    Invoke F_Lua_settable, lua_State, -3
-    Invoke F_Lua_pushnumber, lua_State, F_Lua_createtable
-    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_createtable")
-    Invoke F_Lua_settable, lua_State, -3  
-    Invoke F_Lua_pushnumber, lua_State, F_Lua_getglobal
-    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_getglobal")
-    Invoke F_Lua_settable, lua_State, -3
-    Invoke F_Lua_pushnumber, lua_State, F_Lua_gettop
-    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_gettop")
-    Invoke F_Lua_settable, lua_State, -3
-    Invoke F_Lua_pushnumber, lua_State, F_Lua_pcallk
-    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_pcallk")
-    Invoke F_Lua_settable, lua_State, -3
-    Invoke F_Lua_pushnumber, lua_State, F_Lua_pushcclosure
-    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_pushcclosure")
-    Invoke F_Lua_settable, lua_State, -3
-    Invoke F_Lua_pushnumber, lua_State, F_Lua_pushlightuserdata
-    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_pushlightuserdata")
-    Invoke F_Lua_settable, lua_State, -3
-    Invoke F_Lua_pushnumber, lua_State, F_Lua_pushlstring
-    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_pushlstring")
-    Invoke F_Lua_settable, lua_State, -3
-    Invoke F_Lua_pushnumber, lua_State, F_Lua_pushnumber
-    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_pushnumber")
-    Invoke F_Lua_settable, lua_State, -3
-    Invoke F_Lua_pushnumber, lua_State, F_Lua_pushstring
-    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_pushstring")
-    Invoke F_Lua_settable, lua_State, -3
-    Invoke F_Lua_pushnumber, lua_State, F_Lua_rawgeti
-    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_rawgeti")
-    Invoke F_Lua_settable, lua_State, -3
-    Invoke F_Lua_pushnumber, lua_State, F_Lua_rawlen
-    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_rawlen")
-    Invoke F_Lua_settable, lua_State, -3
-    Invoke F_Lua_pushnumber, lua_State, F_Lua_setfield
-    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_setfield")
-    Invoke F_Lua_settable, lua_State, -3
-    Invoke F_Lua_pushnumber, lua_State, F_Lua_setglobal
-    Invoke F_Lua_pushstring, lua_State, CTEXT("_lLua_setglobal")
-    Invoke F_Lua_settable, lua_State, -3
-    Invoke F_Lua_pushnumber, lua_State, F_Lua_settable
-    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_settable")
-    Invoke F_Lua_settable, lua_State, -3
-    Invoke F_Lua_pushnumber, lua_State, F_Lua_settop
-    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_settop")
-    Invoke F_Lua_settable, lua_State, -3
-    Invoke F_Lua_pushnumber, lua_State, F_Lua_toboolean
-    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_toboolean")
-    Invoke F_Lua_settable, lua_State, -3
-    Invoke F_Lua_pushnumber, lua_State, F_Lua_tolstring
-    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_tolstring")
-    Invoke F_Lua_settable, lua_State, -3
-    Invoke F_Lua_pushnumber, lua_State, F_Lua_tonumberx
-    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_tonumberx")
-    Invoke F_Lua_settable, lua_State, -3
-    Invoke F_Lua_pushnumber, lua_State, F_Lua_touserdata
-    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_touserdata")
-    Invoke F_Lua_settable, lua_State, -3
-    Invoke F_Lua_pushnumber, lua_State, F_Lua_type
-    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_type")
-    Invoke F_Lua_settable, lua_State, -3
-    Invoke F_Lua_pushnumber, lua_State, F_Lua_typename
-    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_typename")
-    Invoke F_Lua_settable, lua_State, -3
-    Invoke F_Lua_pushnumber, lua_State, F_LuaL_loadstring
-    Invoke F_Lua_pushstring, lua_State, CTEXT("_luaL_loadstring")
-    Invoke F_Lua_settable, lua_State, -3
-    Invoke F_Lua_pushnumber, lua_State, F__ftol2_sse
-    Invoke F_Lua_pushstring, lua_State, CTEXT("__ftol2_sse")
+    Invoke F_Lua_pushnumber, lua_State, PatchLocation
     Invoke F_Lua_settable, lua_State, -3
 
+    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_createtable")
+    Invoke F_Lua_pushnumber, lua_State, F_Lua_createtable
+    Invoke F_Lua_settable, lua_State, -3  
+
+    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_getglobal")
+    Invoke F_Lua_pushnumber, lua_State, F_Lua_getglobal
+    Invoke F_Lua_settable, lua_State, -3
+
+    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_gettop")
+    Invoke F_Lua_pushnumber, lua_State, F_Lua_gettop
+    Invoke F_Lua_settable, lua_State, -3
+
+    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_pcallk")
+    Invoke F_Lua_pushnumber, lua_State, F_Lua_pcallk
+    Invoke F_Lua_settable, lua_State, -3
+
+    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_pushcclosure")
+    Invoke F_Lua_pushnumber, lua_State, F_Lua_pushcclosure
+    Invoke F_Lua_settable, lua_State, -3
+
+    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_pushlightuserdata")
+    Invoke F_Lua_pushnumber, lua_State, F_Lua_pushlightuserdata
+    Invoke F_Lua_settable, lua_State, -3
+
+    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_pushlstring")
+    Invoke F_Lua_pushnumber, lua_State, F_Lua_pushlstring
+    Invoke F_Lua_settable, lua_State, -3
+
+    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_pushnumber")
+    Invoke F_Lua_pushnumber, lua_State, F_Lua_pushnumber
+    Invoke F_Lua_settable, lua_State, -3
+
+    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_pushstring")
+    Invoke F_Lua_pushnumber, lua_State, F_Lua_pushstring
+    Invoke F_Lua_settable, lua_State, -3
+
+    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_rawgeti")
+    Invoke F_Lua_pushnumber, lua_State, F_Lua_rawgeti
+    Invoke F_Lua_settable, lua_State, -3
+
+    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_rawlen")
+    Invoke F_Lua_pushnumber, lua_State, F_Lua_rawlen
+    Invoke F_Lua_settable, lua_State, -3
+
+    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_setfield")
+    Invoke F_Lua_pushnumber, lua_State, F_Lua_setfield
+    Invoke F_Lua_settable, lua_State, -3
+
+    Invoke F_Lua_pushstring, lua_State, CTEXT("_lLua_setglobal")
+    Invoke F_Lua_pushnumber, lua_State, F_Lua_setglobal
+    Invoke F_Lua_settable, lua_State, -3
+
+    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_settable")
+    Invoke F_Lua_pushnumber, lua_State, F_Lua_settable
+    Invoke F_Lua_settable, lua_State, -3
+
+    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_settop")
+    Invoke F_Lua_pushnumber, lua_State, F_Lua_settop
+    Invoke F_Lua_settable, lua_State, -3
+
+    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_toboolean")
+    Invoke F_Lua_pushnumber, lua_State, F_Lua_toboolean
+    Invoke F_Lua_settable, lua_State, -3
+
+    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_tolstring")
+    Invoke F_Lua_pushnumber, lua_State, F_Lua_tolstring
+    Invoke F_Lua_settable, lua_State, -3
+
+    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_tonumberx")
+    Invoke F_Lua_pushnumber, lua_State, F_Lua_tonumberx
+    Invoke F_Lua_settable, lua_State, -3
+
+    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_touserdata")
+    Invoke F_Lua_pushnumber, lua_State, F_Lua_touserdata
+    Invoke F_Lua_settable, lua_State, -3
+
+    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_type")
+    Invoke F_Lua_pushnumber, lua_State, F_Lua_type
+    Invoke F_Lua_settable, lua_State, -3
+
+    Invoke F_Lua_pushstring, lua_State, CTEXT("_lua_typename")
+    Invoke F_Lua_pushnumber, lua_State, F_Lua_typename
+    Invoke F_Lua_settable, lua_State, -3
+
+    Invoke F_Lua_pushstring, lua_State, CTEXT("_luaL_loadstring")
+    Invoke F_Lua_pushnumber, lua_State, F_LuaL_loadstring
+    Invoke F_Lua_settable, lua_State, -3
+
+    Invoke F_Lua_pushstring, lua_State, CTEXT("__ftol2_sse")
+    Invoke F_Lua_pushnumber, lua_State, F__ftol2_sse
+    Invoke F_Lua_settable, lua_State, -3
+    
+    Invoke F_Lua_setglobal, lua_State, CTEXT("LuaFunctions")
+    
     mov eax, 1
     ret
 EEex_LuaFunctions ENDP
