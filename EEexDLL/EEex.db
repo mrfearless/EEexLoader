@@ -37,9 +37,9 @@
 ; PatchLocation pattern
 ;------------------------------------------------------
 [PatchLocation]
-PatBytes=83C43085C075145050506AFF50FF35h
+PatBytes=83C43085C075145050506AFF50FF35
 PatAdj=-5
-VerBytes=83C4186A00h
+VerBytes=83C4186A00
 VerAdj=24
 
 
@@ -516,9 +516,9 @@ PatAdj=-37
 ; EE game global patterns
 ;------------------------------------------------------
 [_g_lua]
-PatBytes=83C43085C075145050506AFF50FF35h
+PatBytes=83C43085C075145050506AFF50FF35
 PatAdj=-9
-VerBytes=83C4186A00h
+VerBytes=83C4186A00
 VerAdj=24
 Type=1
 
