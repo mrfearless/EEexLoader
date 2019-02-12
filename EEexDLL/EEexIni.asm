@@ -7,13 +7,22 @@
 include advapi32.inc
 includelib advapi32.lib
 
+
 ;------------------------------------------------------------------------------
 ; EEexIni Prototypes
 ;------------------------------------------------------------------------------
 ; Core ini functions:
 IniReadValue            PROTO :DWORD,:DWORD,:DWORD    ; lpszSection, lpszKeyname, dwDefaultValue
 IniWriteValue           PROTO :DWORD,:DWORD,:DWORD    ; lpszSection, lpszKeyname, dwValue
-IniClearFallbackSection PROTO                         ;
+
+; External pattern database ini functions:
+IniGetPatternNames      PROTO                         ;
+IniGetNextPatternName   PROTO                         ; 
+IniGetPatBytesText      PROTO :DWORD,:DWORD           ; lpszPatternName, lpdwPatBytesText
+IniGetVerBytesText      PROTO :DWORD,:DWORD           ; lpszPatternName, lpdwVerBytesText
+IniGetPatAdj            PROTO :DWORD                  ; lpszPatternName
+IniGetVerAdj            PROTO :DWORD                  ; lpszPatternName
+IniGetPatType           PROTO :DWORD                  ; lpszPatternName
 
 ; Internal ini functions:
 IniValueToString        TEXTEQU <EEexDwordToAscii>    ; dwValue:DWORD, lpszAsciiString (EEexDwordToAscii is in EEex.asm)
@@ -27,17 +36,15 @@ IniGetOptionLua         PROTO                   ;
 IniSetOptionLua         PROTO :DWORD            ; dwValue
 IniGetOptionHex         PROTO                   ;
 IniSetOptionHex         PROTO :DWORD            ; dwValue
-
-; [EEex] section ini functions:
-IniGetPatchLocation     PROTO :DWORD            ; bFallback
-IniSetPatchLocation     PROTO :DWORD            ; dwValue
-
-
+IniGetOptionMsg         PROTO                   ;
+IniSetOptionMsg         PROTO :DWORD            ; dwValue
 
 
 .CONST
-INI_NORMAL              EQU 0       ; Read [EEex] section
-INI_FALLBACK            EQU 1       ; Read [Fallback] section
+INI_LARGESTRING         EQU 2048    ; Max bytes for large key-value string
+INI_MAXSECTIONS         EQU 2048    ; Max no of sections for pattern definitions
+INI_SECNAMESSIZE        EQU 65536
+INI_SECNAMESSIZE_ERROR  EQU 65534   ; size error on return
 
 
 .DATA
@@ -61,6 +68,7 @@ gEEexLua                DD FALSE    ; Enable lua lib functions (default is no)
 ENDIF
 gEEexHex                DD TRUE     ; Write string values as hex instead of decimal (default is yes)
 gEEexHexUppercase       DD TRUE     ; Hex strings in uppercase (default is yes) - not currently read from ini
+gEEexMsg                DD TRUE     ; Messagebox errors/warnings - (default is enabled) - 0 to disable
 
 ;---------------------------
 ; Ini strings
@@ -68,7 +76,6 @@ gEEexHexUppercase       DD TRUE     ; Hex strings in uppercase (default is yes) 
 szIni                   DB "ini",0
 szIniEEex               DB "EEex",0
 szIniEEexOptions        DB "Options",0
-szIniEEexFallback       DB "Fallback",0
 szIniValueZero          DB "0",0
 szIniDefault            DB ":",0
 szIniHex                DB "0x",0
@@ -79,22 +86,30 @@ szIniHex                DB "0x",0
 szIniOptionLog          DB "Log",0
 szIniOptionLua          DB "Lua",0
 szIniOptionHex          DB "Hex",0
-
-
+szIniOptionMsg          DB "Msg",0
 
 ;---------------------------
-; [EEex] section strings
+; [Pattern] section strings
 ;---------------------------
-szIniCAIObjectTypeOpEqu2 DB "CAIObjectType::operator-equequ",0 ; CAIObjectType::operator==
-szIniCAIObjectTypeOpEqu  DB "CAIObjectType::operator-equ",0 ; CAIObjectType::operator=
-szIniCStringOpPlus       DB "CString::operator-plus",0 ; operator+
-szIniCResRefOpEqu        DB "CResRef::operator-equ",0 ; operator= 
-szIniCResRefOpNotEqu     DB "CResRef::operator-notequ",0 ; operator!=
+szIniPatBytes           DB "PatBytes",0
+szIniVerBytes           DB "VerBytes",0
+szIniPatAdj             DB "PatAdj",0
+szIniVerAdj             DB "VerAdj",0
+szIniPatType            DB "Type",0
+
+;---------------------------
+; Pattern names position
+;---------------------------
+IniNextPatternNamePos   DD 0 ; Used by IniGetNextPatternName to get string pos of szIniSectionNames
+
 ;---------------------------
 ; Ini Buffers
 ;---------------------------
 szIniValueString        DB 32 DUP (0)
 szIniString             DB 32 DUP (0)
+szIniLargeString        DB INI_LARGESTRING DUP (0)
+szIniPatternNames       DB INI_SECNAMESSIZE DUP (0) ; avg name length 32 chars give about 2048 entries
+
 
 .CODE
 
@@ -163,7 +178,6 @@ IniReadValue PROC USES EBX ECX lpszSection:DWORD, lpszKeyname:DWORD, dwDefaultVa
     ret
 IniReadValue ENDP
 
-
 EEEX_ALIGN
 ;------------------------------------------------------------------------------
 ; Writes a key's value to a section in an ini file. 
@@ -184,45 +198,183 @@ IniWriteValue PROC lpszSection:DWORD, lpszKeyname:DWORD, dwValue:DWORD
 IniWriteValue ENDP
 
 
+
+;==============================================================================
+; Pattern import ini functions
+;==============================================================================
+
 EEEX_ALIGN
 ;------------------------------------------------------------------------------
-; Clears the [Fallback] section in the ini file. The fallback section can
-; contain function addresses to fallback on, if the pattern's searched for fail
-; in this case if a fallback section keyvalue is found, this alternative
-; address (typically from a specific build of an exe) can be used. 
-;
-; After a newer build/update for the EEex loader and dll, when patterns are 
-; found again, then this [Fallback] section is cleared to prevent newer EE game
-; builds in future from triggering the read of now (possibly) invalid fallback 
-; addresses.
-;
-; Typical scenario for usage is that info from a forum post etc will indicate
-; the raw hardcoded addresses to use. User then edits EEex.ini to add a
-; [Fallback] section and the function addresses, or paste info.
-;
-; [Fallback]
-; lua_pushnumber=0x1234ABCD
-;
+; IniGetPatternNames - Get section names from external patterns database
+; Returns: 0 if no content, -1 if too many patterns, or pattern count
 ;------------------------------------------------------------------------------
-IniClearFallbackSection PROC
-    Invoke WritePrivateProfileString, Addr szIniEEexFallback, NULL, NULL, Addr EEexIniFile
+IniGetPatternNames PROC USES EBX ECX
+    Invoke GetPrivateProfileSectionNames, Addr szIniPatternNames, SIZEOF szIniPatternNames, Addr EEexPatFile
+    
+    .IF eax == 0 ; nothing/no patterns
+        mov eax, 0
+    .ELSEIF eax == INI_SECNAMESSIZE_ERROR ; too many patterns
+        mov eax, -1
+    .ELSE
+        ; get count of section names = total patterns
+        xor ecx, ecx
+        lea ebx, szIniPatternNames
+        movzx eax, word ptr [ebx]
+        .IF ax == 0 ; just in case
+            mov eax, 0
+            ret
+        .ENDIF
+        .WHILE ax != 0
+            .IF al == 0
+                inc ecx
+            .ENDIF
+            inc ebx
+            movzx eax, word ptr [ebx]
+        .ENDW
+        inc ecx ; add extra 1 for last double null found
+    
+        mov eax, ecx ; eax contains total section names
+    .ENDIF
     ret
-IniClearFallbackSection ENDP
-
+IniGetPatternNames ENDP
 
 EEEX_ALIGN
+;------------------------------------------------------------------------------
+; IniGetNextPatternName
+;------------------------------------------------------------------------------
+IniGetNextPatternName PROC USES EBX
+    LOCAL lpszPatName:DWORD
+    
+    lea ebx, szIniPatternNames
+    add ebx, IniNextPatternNamePos
+    mov lpszPatName, ebx
+    
+    movzx eax, byte ptr [ebx]
+    .IF al == 0 ; if at null already we are at last double null so reset & exit
+        mov IniNextPatternNamePos, 0
+        mov eax, 0
+        ret
+    .ENDIF
+    
+    ; update IniNextPatternNamePos to point to next pattern name for next call
+    movzx eax, byte ptr [ebx]
+    .WHILE al != 0
+        inc IniNextPatternNamePos
+        inc ebx
+        movzx eax, byte ptr [ebx]
+    .ENDW
+    inc IniNextPatternNamePos ; skip past null for correct position of next call
+    
+    mov eax, lpszPatName
+    ret
+IniGetNextPatternName ENDP
+
+EEEX_ALIGN
+;------------------------------------------------------------------------------
+; IniGetPatBytesText - Read PatBytes from patterns database for a <PatternName>
+; Returns: in eax length of patbytes text string, or 0 if empty, -1 if invalid
+; On succesful return the DWORD variable pointed to by lpdwPatBytesText
+; will contain the pointer to the PatBytes hex text string 
+;------------------------------------------------------------------------------
+IniGetPatBytesText PROC USES EBX lpszPatternName:DWORD, lpdwPatBytesText:DWORD
+    LOCAL dwLenPatBytes:DWORD
+    
+    Invoke GetPrivateProfileString, lpszPatternName, Addr szIniPatBytes, Addr szIniDefault, Addr szIniLargeString, SIZEOF szIniLargeString, Addr EEexPatFile
+    .IF eax == 1 ; default char ':' returned as PatBytes didnt have anything in it, or it had 1 character which is invalid anyhow
+        mov ebx, lpdwPatBytesText
+        mov eax, 0
+        mov [ebx], eax
+        ret
+    .ENDIF
+    mov dwLenPatBytes, eax
+    ; check if length is multiple of 2
+    ;and eax, 1 ; ( a AND (b-1) = mod )
+    ;.IF eax == 0 ; is divisable by 2?
+        lea eax, szIniLargeString
+        mov ebx, lpdwPatBytesText
+        mov [ebx], eax
+        mov eax, dwLenPatBytes
+    ;.ELSE
+    ;    mov ebx, lpdwPatBytesText
+    ;    mov eax, -1
+    ;    mov [ebx], eax
+    ;.ENDIF
+    ret
+IniGetPatBytesText ENDP
+
+EEEX_ALIGN
+;------------------------------------------------------------------------------
+; IniGetVerBytesText - Read VerBytes from patterns database for a <PatternName>
+; Returns: in eax length of verbytes text string, or 0 if empty, -1 if invalid
+; On succesful return the DWORD variable pointed to by lpdwVerBytesText
+; will contain the pointer to the VerBytes hex text string 
+;------------------------------------------------------------------------------;
+IniGetVerBytesText PROC lpszPatternName:DWORD, lpdwVerBytesText:DWORD
+    LOCAL dwLenVerBytes:DWORD
+    
+    Invoke GetPrivateProfileString, lpszPatternName, Addr szIniVerBytes, Addr szIniDefault, Addr szIniLargeString, SIZEOF szIniLargeString, Addr EEexPatFile
+    .IF eax == 1 ; default char ':' returned as PatBytes didnt have anything in it, or it had 1 character which is invalid anyhow
+        mov ebx, lpdwVerBytesText
+        mov eax, 0
+        mov [ebx], eax
+        ret
+    .ENDIF
+    mov dwLenVerBytes, eax
+    ; check if length is multiple of 2
+    ;and eax, 1 ; ( a AND (b-1) = mod )
+    ;.IF eax == 0 ; is divisable by 2?
+        lea eax, szIniLargeString
+        mov ebx, lpdwVerBytesText
+        mov [ebx], eax
+        mov eax, dwLenVerBytes
+    ;.ELSE
+    ;    mov ebx, lpdwVerBytesText
+    ;    mov eax, -1
+    ;    mov [ebx], eax
+    ;.ENDIF
+    ret
+IniGetVerBytesText ENDP
+
+EEEX_ALIGN
+;------------------------------------------------------------------------------
+; IniGetPatAdj - Read PatAdj key for <PatternName> from patterns database
+;------------------------------------------------------------------------------
+IniGetPatAdj PROC lpszPatternName:DWORD
+    Invoke GetPrivateProfileInt, lpszPatternName, Addr szIniPatAdj, 0, Addr EEexPatFile
+    ret
+IniGetPatAdj ENDP
+
+EEEX_ALIGN
+;------------------------------------------------------------------------------
+; IniGetVerAdj - Read VerAdj key for <PatternName> from patterns database
+;------------------------------------------------------------------------------
+IniGetVerAdj PROC lpszPatternName:DWORD
+    Invoke GetPrivateProfileInt, lpszPatternName, Addr szIniVerAdj, 0, Addr EEexPatFile
+    ret
+IniGetVerAdj ENDP
+
+EEEX_ALIGN
+;------------------------------------------------------------------------------
+; IniGetPatType - Read Type key for <PatternName> from patterns database
+;------------------------------------------------------------------------------
+IniGetPatType PROC lpszPatternName:DWORD
+    Invoke GetPrivateProfileInt, lpszPatternName, Addr szIniPatType, 0, Addr EEexPatFile
+    ret
+IniGetPatType ENDP
+
+
+
+
 ;==============================================================================
 ; [Option] section ini functions
 ;==============================================================================
+
+EEEX_ALIGN
 ;------------------------------------------------------------------------------
 ; Read ini file for log setting from [Option] section
 ;------------------------------------------------------------------------------
 IniGetOptionLog PROC
-    IFDEF EEEX_LOGGING
     Invoke GetPrivateProfileInt, Addr szIniEEexOptions, Addr szIniOptionLog, gEEexLog, Addr EEexIniFile
-    ELSE
-    mov eax, FALSE
-    ENDIF
     ret
 IniGetOptionLog ENDP
 
@@ -288,26 +440,26 @@ IniSetOptionHex ENDP
 
 EEEX_ALIGN
 ;------------------------------------------------------------------------------
-; Read ini file for PatchLocation
+; Read ini file for msg setting from [Option] section
 ;------------------------------------------------------------------------------
-IniGetPatchLocation PROC bFallback:DWORD
-    .IF bFallback == TRUE
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szPatchLocation, 0
-    .ELSE
-        Invoke IniReadValue, Addr szIniEEex, Addr szPatchLocation, 0
-    .ENDIF
+IniGetOptionMsg PROC
+    Invoke GetPrivateProfileInt, Addr szIniEEexOptions, Addr szIniOptionMsg, gEEexMsg, Addr EEexIniFile
     ret
-IniGetPatchLocation ENDP
+IniGetOptionMsg ENDP
 
 EEEX_ALIGN
 ;------------------------------------------------------------------------------
-; Write PatchLocation to ini file
+; Writes msg setting to [Option] section
 ;------------------------------------------------------------------------------
-IniSetPatchLocation PROC dwValue:DWORD
-    Invoke IniWriteValue, Addr szIniEEex, Addr szPatchLocation, dwValue
+IniSetOptionMsg PROC dwValue:DWORD
+    .IF dwValue == 0
+        Invoke WritePrivateProfileString, Addr szIniEEexOptions, Addr szIniOptionMsg, Addr szIniValueZero, Addr EEexIniFile
+    .ELSE
+        Invoke IniValueToString, dwValue, Addr szIniValueString
+        Invoke WritePrivateProfileString, Addr szIniEEexOptions, Addr szIniOptionMsg, Addr szIniValueString, Addr EEexIniFile
+    .ENDIF
     ret
-IniSetPatchLocation ENDP
-
+IniSetOptionMsg ENDP
 
 
 

@@ -246,6 +246,26 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
     .ENDIF    
     
     ;--------------------------------------------------------------------------
+    ; check EEex.db in current folder
+    ;--------------------------------------------------------------------------  
+    Invoke lstrcpy, Addr szFileEEexDB, Addr szCurrentFolder
+    Invoke lstrcat, Addr szFileEEexDB, Addr szEEexDB
+    IFDEF DEBUG32
+    PrintString szFileEEexDB
+    ENDIF
+    Invoke GetFileAttributes, Addr szFileEEexDB
+    .IF eax == INVALID_FILE_ATTRIBUTES
+        Invoke GetLastError
+        .IF eax == ERROR_FILE_NOT_FOUND
+            IFDEF DEBUG32
+            PrintText 'EEex.db is missing - cannot continue.'
+            ENDIF
+            Invoke DisplayErrorMessage, Addr szErrorEEexDBMissing, 0
+            ret
+        .ENDIF
+    .ENDIF    
+    
+    ;--------------------------------------------------------------------------
     ; check UI.menu, TRIGGER.ids, OBJECT.ids and ACTION.ids in override folder
     ;--------------------------------------------------------------------------
     IFDEF CHECK_OVERRIDE_FILES

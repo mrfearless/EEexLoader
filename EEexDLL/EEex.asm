@@ -175,17 +175,19 @@ EEexInitDll PROC USES EBX
     ; Finished EE Game Module Info And Sections Stage
     ;--------------------------------------------------------------------------
 
-
     Invoke EEexLogInformation, INFO_DEBUG
 
+    ;--------------------------------------------------------------------------
+    ; Import Patterns Database
+    ;--------------------------------------------------------------------------
 
+    Invoke EEexImportPatterns
+    Invoke EEexLogInformation, INFO_IMPORTED
+ 
     ;--------------------------------------------------------------------------
     ; Verify Pattern Addresses
     ;--------------------------------------------------------------------------
     mov bSearchPatterns, TRUE ; Set to true to assume we will search for all patterns
-    IFDEF DEBUG32
-    PrintText 'EEexVerifyPatterns'
-    ENDIF
     Invoke EEexVerifyPatterns
     .IF eax == TRUE ; no need to search for patterns as we have verified them all
         IFDEF DEBUG32
@@ -204,53 +206,36 @@ EEexInitDll PROC USES EBX
     ; Search For Pattern Addresses
     ;--------------------------------------------------------------------------
     .IF bSearchPatterns == TRUE ; If we failed to verify some or all patterns, search for remainder
-        IFDEF DEBUG32
-        PrintText 'EEexSearchPatterns'
-        ENDIF
         Invoke EEexSearchPatterns
         .IF eax == TRUE ; EE Game Lua Function Addresses Found - Write Info To Ini File
             IFDEF DEBUG32
             PrintText 'EEexSearchPatterns Success'
             ENDIF
             Invoke EEexLogInformation, INFO_SEARCHED
-            Invoke IniClearFallbackSection
             Invoke EEexWriteAddressesToIni
             ;------------------------------------------------------------------
             ; Continue Onwards To Apply Patch Stage
             ;------------------------------------------------------------------
-
         .ELSE ; EE Game Lua Function Addresses NOT VERIFIED OR FOUND!
             IFDEF DEBUG32
             PrintText 'EEexSearchPatterns Failed'
-            PrintText 'EEexFallbackAddresses'
             ENDIF
-            Invoke EEexFallbackAddresses ; check if any fallback addresses are in ini
-            .IF eax == FALSE ; Have to tell user we dont have any addresses
-                Invoke EEexLogInformation, INFO_SEARCHED
-                ; Error tell user that cannot find or verify functions - might be a new build
-                IFDEF EEEX_LOGGING
-                .IF gEEexLog > LOGLEVEL_NONE
-                    Invoke LogOpen, FALSE
-                    Invoke LogMessage, Addr szErrorSearchFunctions, LOG_ERROR, 0 ; CTEXT("Cannot find or verify EE game lua functions - might be an unsupported or new build of EE game.")
-                    Invoke LogClose
-                .ENDIF
-                ENDIF
-                Invoke MessageBox, 0, Addr szErrorSearchFunctions, Addr AppName, MB_OK
-                ;--------------------------------------------------------------
-                ; EEex.DLL EXITS HERE - Execution continues with EE game
-                ;--------------------------------------------------------------
-                ret ; Exit EEexInitDll
-
-            .ELSE
-                IFDEF DEBUG32
-                PrintText 'Using Fallback addresses'
-                ENDIF
-                Invoke EEexLogInformation, INFO_FALLBACK
-                ;--------------------------------------------------------------
-                ; Using Fallback addresses - could still crash!
-                ;--------------------------------------------------------------
-
+            Invoke EEexLogInformation, INFO_SEARCHED
+            ; Error tell user that cannot find or verify functions - might be a new build
+            IFDEF EEEX_LOGGING
+            .IF gEEexLog > LOGLEVEL_NONE
+                Invoke LogOpen, FALSE
+                Invoke LogMessage, Addr szErrorSearchFunctions, LOG_ERROR, 0 ; CTEXT("Cannot find or verify EE game lua functions - might be an unsupported or new build of EE game.")
+                Invoke LogClose
             .ENDIF
+            ENDIF
+            .IF gEEexMsg == TRUE
+                Invoke MessageBox, 0, Addr szErrorSearchFunctions, Addr AppName, MB_OK
+            .ENDIF
+            ;--------------------------------------------------------------
+            ; EEex.DLL EXITS HERE - Execution continues with EE game
+            ;--------------------------------------------------------------
+            ret ; Exit EEexInitDll
         .ENDIF
     .ELSE ; Functions verified, no need for search
         IFDEF DEBUG32
@@ -268,10 +253,9 @@ EEexInitDll PROC USES EBX
     ;--------------------------------------------------------------------------
     ; Apply Patch Stage (Call EEexLuaInit) - At PatchLocation In EE Game
     ;--------------------------------------------------------------------------
+    Invoke EEexPatchLocation
+    mov PatchLocation, eax
     .IF PatchLocation != 0
-        IFDEF DEBUG32
-        PrintText 'EEexApplyCallPatch'
-        ENDIF
         Invoke EEexApplyCallPatch, PatchLocation ; (call EEexLuaInit)
         .IF eax == TRUE ; Patch Success! - Write status to log and exit EEex.dll
             IFDEF DEBUG32
@@ -301,6 +285,13 @@ EEexInitDll PROC USES EBX
                 Invoke LogClose
             .ENDIF
             ENDIF
+            .IF gEEexMsg == TRUE
+                Invoke MessageBox, 0, Addr szErrorPatchFailure, Addr AppName, MB_OK
+            .ENDIF
+            ;------------------------------------------------------------------
+            ; EEex.DLL EXITS HERE - Execution continues with EE game
+            ;------------------------------------------------------------------
+            ret ; Exit EEexInitDll                   
         .ENDIF
     .ELSE
         IFDEF EEEX_LOGGING
@@ -309,14 +300,21 @@ EEexInitDll PROC USES EBX
             Invoke LogClose
         .ENDIF
         ENDIF
+        .IF gEEexMsg == TRUE
+            Invoke MessageBox, 0, Addr szErrorPatchLocation, Addr AppName, MB_OK
+        .ENDIF
+        ;----------------------------------------------------------------------
+        ; EEex.DLL EXITS HERE - Execution continues with EE game
+        ;----------------------------------------------------------------------
+        ret ; Exit EEexInitDll        
     .ENDIF
     ;--------------------------------------------------------------------------
     ; Finished Apply Patch Stage
     ;--------------------------------------------------------------------------
 
-
+    Invoke EEexFunctionAddresses ; get function address for lua functions etc
     Invoke EEexGameGlobals ; get pointers to game globals
-
+    Invoke EEexLogInformation, INFO_ADDRESSES ; lists function and resolved global addresses
 
     ;--------------------------------------------------------------------------
     ; EEex.DLL EXITS HERE - Execution continues with EE game
@@ -338,6 +336,7 @@ EEexInitGlobals PROC USES EBX
     Invoke GetModuleFileName, 0, Addr EEexExeFile, SIZEOF EEexExeFile
     Invoke GetModuleFileName, hInstance, Addr EEexIniFile, SIZEOF EEexIniFile
     Invoke lstrcpy, Addr EEexLogFile, Addr EEexIniFile
+    Invoke lstrcpy, Addr EEexPatFile, Addr EEexIniFile
     Invoke lstrlen, Addr EEexIniFile
     mov nLength, eax
     lea ebx, EEexIniFile
@@ -352,25 +351,36 @@ EEexInitGlobals PROC USES EBX
     sub ebx, 3 ; move back past 'dll' extention
     mov byte ptr [ebx], 0 ; null so we can use lstrcat
     Invoke lstrcat, ebx, Addr szLog ; add 'log' to end of string instead
+    
+    ; Construct patterns database filename
+    lea ebx, EEexPatFile
+    add ebx, nLength
+    sub ebx, 3 ; move back past 'dll' extention
+    mov byte ptr [ebx], 0 ; null so we can use lstrcat
+    Invoke lstrcat, ebx, Addr szPatDB ; add 'db' to end of string instead    
 
     Invoke EEexEEFileInformation
     .IF eax == TRUE
         Invoke EEexEEGameInformation
         IFDEF DEBUG32
         PrintDec gEEGameType
+        PrintString EEexPatFile
         ENDIF
     .ENDIF
 
     Invoke IniGetOptionLog
     mov gEEexLog, eax
-    Invoke IniGetOptionLua ; TODO how to implement with patterns in .data?
+    Invoke IniGetOptionLua
     mov gEEexLua, eax
     Invoke IniGetOptionHex
     mov gEEexHex, eax
+    Invoke IniGetOptionMsg
+    mov gEEexMsg, eax
     
     Invoke IniSetOptionLog, gEEexLog
     Invoke IniSetOptionLua, gEEexLua
     Invoke IniSetOptionHex, gEEexHex
+    Invoke IniSetOptionMsg, gEEexMsg
 
     ;--------------------------------------------------------------------------
     ; Get addresses of win32 api functions
@@ -389,302 +399,302 @@ EEexInitGlobals PROC USES EBX
     PrintDec F_SDL_free
     ENDIF
 
-    ;--------------------------------------------------------------------------
-    ; Read in pattern addresses of Lua functions if present in ini file
-    ;--------------------------------------------------------------------------
-    Invoke IniGetPatchLocation, INI_NORMAL
-    mov PatchLocation, eax
-    IFDEF EEEX_LUALIB
-        .IF gEEexLua == TRUE
-            ; set function pointers to internal static lua library functions
-            lea eax, lua_createtable
-            mov F_Lua_createtable, eax
-            lea eax, lua_getglobal
-            mov F_Lua_getglobal, eax
-            lea eax, lua_gettop
-            mov F_Lua_gettop, eax
-            lea eax, lua_pcallk
-            mov F_Lua_pcallk, eax
-            lea eax, lua_pushcclosure
-            mov F_Lua_pushcclosure, eax
-            lea eax, lua_pushlightuserdata
-            mov F_Lua_pushlightuserdata, eax
-            lea eax, lua_pushlstring
-            mov F_Lua_pushlstring, eax
-            lea eax, lua_pushnumber
-            mov F_Lua_pushnumber, eax
-            lea eax, lua_pushstring
-            mov F_Lua_pushstring, eax
-            lea eax, lua_rawgeti
-            mov F_Lua_rawgeti, eax
-            lea eax, lua_rawlen
-            mov F_Lua_rawlen, eax
-            lea eax, lua_setfield
-            mov F_Lua_setfield, eax
-            lea eax, lua_settable
-            mov F_Lua_settable, eax
-            lea eax, lua_settop
-            mov F_Lua_settop, eax
-            lea eax, lua_toboolean
-            mov F_Lua_toboolean, eax
-            lea eax, lua_tolstring
-            mov F_Lua_tolstring, eax
-            lea eax, lua_tonumberx
-            mov F_Lua_tonumberx, eax
-            lea eax, lua_touserdata
-            mov F_Lua_touserdata, eax
-            lea eax, lua_type
-            mov F_Lua_type, eax
-            lea eax, lua_typename
-            mov F_Lua_typename, eax
-            ; Get these functions if in ini
-            ; as the static lua lib ones crash.
-            ; speeds up verify
-            ;IniReadValue, Addr szIniEEex, Addr szIniLua_setglobal
-            lea eax, lua_setglobalx
-            mov F_Lua_setglobal, eax
-            Invoke IniReadValue, Addr szIniEEex, Addr szLuaL_loadstring, 0
-            mov F_LuaL_loadstring, eax
-        .ENDIF
-    ENDIF
-    
-    .IF gEEexLua == FALSE || gEEexLuaLibDefined == FALSE ; or read all function pointers from ini file
-        Invoke IniReadValue, Addr szIniEEex, Addr szLua_createtable, 0
-        mov F_Lua_createtable, eax
-        Invoke IniReadValue, Addr szIniEEex, Addr szLua_getglobal, 0
-        mov F_Lua_getglobal, eax
-        Invoke IniReadValue, Addr szIniEEex, Addr szLua_gettop, 0
-        mov F_Lua_gettop, eax
-        Invoke IniReadValue, Addr szIniEEex, Addr szLua_pcallk, 0
-        mov F_Lua_pcallk, eax
-        Invoke IniReadValue, Addr szIniEEex, Addr szLua_pushcclosure, 0
-        mov F_Lua_pushcclosure, eax
-        Invoke IniReadValue, Addr szIniEEex, Addr szLua_pushlightuserdata, 0
-        mov F_Lua_pushlightuserdata, eax
-        Invoke IniReadValue, Addr szIniEEex, Addr szLua_pushlstring, 0
-        mov F_Lua_pushlstring, eax
-        Invoke IniReadValue, Addr szIniEEex, Addr szLua_pushnumber, 0
-        mov F_Lua_pushnumber, eax
-        Invoke IniReadValue, Addr szIniEEex, Addr szLua_pushstring, 0
-        mov F_Lua_pushstring, eax
-        Invoke IniReadValue, Addr szIniEEex, Addr szLua_rawgeti, 0
-        mov F_Lua_rawgeti, eax
-        Invoke IniReadValue, Addr szIniEEex, Addr szLua_rawlen, 0
-        mov F_Lua_rawlen, eax
-        Invoke IniReadValue, Addr szIniEEex, Addr szLua_setfield, 0
-        mov F_Lua_setfield, eax
-        Invoke IniReadValue, Addr szIniEEex, Addr szLua_setglobal, 0
-        mov F_Lua_setglobal, eax
-        Invoke IniReadValue, Addr szIniEEex, Addr szLua_settable, 0
-        mov F_Lua_settable, eax
-        Invoke IniReadValue, Addr szIniEEex, Addr szLua_settop, 0
-        mov F_Lua_settop, eax
-        Invoke IniReadValue, Addr szIniEEex, Addr szLua_toboolean, 0
-        mov F_Lua_toboolean, eax
-        Invoke IniReadValue, Addr szIniEEex, Addr szLua_tolstring, 0
-        mov F_Lua_tolstring, eax
-        Invoke IniReadValue, Addr szIniEEex, Addr szLua_tonumberx, 0
-        mov F_Lua_tonumberx, eax
-        Invoke IniReadValue, Addr szIniEEex, Addr szLua_touserdata, 0
-        mov F_Lua_touserdata, eax
-        Invoke IniReadValue, Addr szIniEEex, Addr szLua_type, 0
-        mov F_Lua_type, eax
-        Invoke IniReadValue, Addr szIniEEex, Addr szLua_typename, 0
-        mov F_Lua_typename, eax
-        Invoke IniReadValue, Addr szIniEEex, Addr szLuaL_loadstring, 0
-        mov F_LuaL_loadstring, eax
-    .ENDIF
-
-
-    ;--------------------------------------------------------------------------
-    ; Read in pattern addresses of game functions if present in ini file
-    ;--------------------------------------------------------------------------
-    ; CAIObjectType
-    Invoke IniReadValue, Addr szIniEEex, Addr szCAIObjectTypeDecode, 0
-    mov F_EE_CAIObjectTypeDecode, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCAIObjectTypeRead, 0
-    mov F_EE_CAIObjectTypeRead, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCAIObjectTypeSet, 0
-    mov F_EE_CAIObjectTypeSet, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCAIObjectTypeSSC, 0
-    mov F_EE_CAIObjectTypeSSC, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szIniCAIObjectTypeOpEqu, 0
-    mov F_EE_CAIObjectTypeOpEqu, eax
-    ; CDerivedStats
-    Invoke IniReadValue, Addr szIniEEex, Addr szCDerivedStatsGetAtOffset, 0
-    mov F_EE_CDerivedStatsGetAtOffset, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCDerivedStatsGetLevel, 0
-    mov F_EE_CDerivedStatsGetLevel, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCDerivedStatsSetLevel, 0
-    mov F_EE_CDerivedStatsSetLevel, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCDerivedStatsGetSpellState, 0
-    mov F_EE_CDerivedStatsGetSpellState, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCDerivedStatsSetSpellState, 0
-    mov F_EE_CDerivedStatsSetSpellState, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCDerivedStatsGetWarriorLevel, 0
-    mov F_EE_CDerivedStatsGetWarriorLevel, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCDerivedStatsReload, 0
-    mov F_EE_CDerivedStatsReload, eax
-    ; CGameSprite
-    Invoke IniReadValue, Addr szIniEEex, Addr szCGameSpriteCGameSprite, 0
-    mov F_EE_CGameSpriteCGameSprite, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCGameSpriteAddKnownSpell, 0
-    mov F_EE_CGameSpriteAddKnownSpell, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCGameSpriteAddKnownSpellMage, 0
-    mov F_EE_CGameSpriteAddKnownSpellMage, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCGameSpriteAddKnownSpellPriest, 0
-    mov F_EE_CGameSpriteAddKnownSpellPriest, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCGameSpriteAddNewSA, 0
-    mov F_EE_CGameSpriteAddNewSA, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCGameSpriteGetActiveStats, 0
-    mov F_EE_CGameSpriteGetActiveStats, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCGameSpriteGetActiveProficiency, 0
-    mov F_EE_CGameSpriteGetActiveProficiency, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCGameSpriteGetKit, 0
-    mov F_EE_CGameSpriteGetKit, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCGameSpriteGetName, 0
-    mov F_EE_CGameSpriteGetName, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCGameSpriteGetQuickButtons, 0
-    mov F_EE_CGameSpriteGetQuickButtons, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCGameSpriteMemorizeSpell, 0
-    mov F_EE_CGameSpriteMemorizeSpell, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCGameSpriteMemorizeSpellMage, 0
-    mov F_EE_CGameSpriteMemorizeSpellMage, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCGameSpriteMemorizeSpellPriest, 0
-    mov F_EE_CGameSpriteMemorizeSpellPriest, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCGameSpriteMemorizeSpellInnate, 0
-    mov F_EE_CGameSpriteMemorizeSpellInnate, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCGameSpriteReadySpell, 0
-    mov F_EE_CGameSpriteReadySpell, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCGameSpriteRemoveKnownSpell, 0
-    mov F_EE_CGameSpriteRemoveKnownSpell, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCGameSpriteRemoveKnownSpellMage, 0
-    mov F_EE_CGameSpriteRemoveKnownSpellMage, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCGameSpriteRemoveKnownSpellPriest, 0
-    mov F_EE_CGameSpriteRemoveKnownSpellPriest, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCGameSpriteRemoveKnownSpellInnate, 0
-    mov F_EE_CGameSpriteRemoveKnownSpellInnate, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCGameSpriteRemoveNewSA, 0
-    mov F_EE_CGameSpriteRemoveNewSA, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCGameSpriteRenderHealthBar, 0
-    mov F_EE_CGameSpriteRenderHealthBar, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCGameSpriteSetCTT, 0
-    mov F_EE_CGameSpriteSetCTT, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCGameSpriteSetColor, 0
-    mov F_EE_CGameSpriteSetColor, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCGameSpriteShatter, 0
-    mov F_EE_CGameSpriteShatter, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCGameSpriteUnmemorizeSpellMage, 0
-    mov F_EE_CGameSpriteUnmemorizeSpellMage, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCGameSpriteUnmemorizeSpellPriest, 0
-    mov F_EE_CGameSpriteUnmemorizeSpellPriest, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCGameSpriteUnmemorizeSpellInnate, 0
-    mov F_EE_CGameSpriteUnmemorizeSpellInnate, eax
-    ; CInfinity
-    Invoke IniReadValue, Addr szIniEEex, Addr szCInfinityDrawLine, 0
-    mov F_EE_CInfinityDrawLine, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCInfinityDrawRectangle, 0
-    mov F_EE_CInfinityDrawRectangle, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCInfinityRenderAOE, 0
-    mov F_EE_CInfinityRenderAOE, eax
-    ; CInfGame
-    Invoke IniReadValue, Addr szIniEEex, Addr szCInfGameAddCTA, 0
-    mov F_EE_CInfGameAddCTA, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCInfGameAddCTF, 0
-    mov F_EE_CInfGameAddCTF, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCInfGameGetCharacterId, 0
-    mov F_EE_CInfGameGetCharacterId, eax
-    ; CObList
-    Invoke IniReadValue, Addr szIniEEex, Addr szCObListRemoveAll, 0
-    mov F_EE_CObListRemoveAll, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCObListRemoveHead, 0
-    mov F_EE_CObListRemoveHead, eax
-    ; CResRef
-    Invoke IniReadValue, Addr szIniEEex, Addr szCResRefGetResRefStr, 0
-    mov F_EE_CResRefGetResRefStr, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCResRefIsValid, 0
-    mov F_EE_CResRefIsValid, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCResRefCResRef, 0
-    mov F_EE_CResRefCResRef, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szIniCResRefOpEqu, 0
-    mov F_EE_CResRefOpEqu, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szIniCResRefOpNotEqu, 0
-    mov F_EE_CResRefOpNotEqu, eax
-    ; CString
-    Invoke IniReadValue, Addr szIniEEex, Addr szIniCStringOpPlus, 0
-    mov F_EE_CStringOpPlus, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCStringCString, 0
-    mov F_EE_CStringCString, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCStringFindIndex, 0
-    mov F_EE_CStringFindIndex, eax
-    ; CInfButtonArray
-    Invoke IniReadValue, Addr szIniEEex, Addr szCInfButtonArraySetState, 0
-    mov F_EE_CInfButtonArraySetState, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCInfButtonArrayUpdateButtons, 0
-    mov F_EE_CInfButtonArrayUpdateButtons, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCInfButtonArraySTT, 0
-    mov F_EE_CInfButtonArraySTT, eax
-    ; CGameEffect
-    Invoke IniReadValue, Addr szIniEEex, Addr szCGameEffectCGameEffect, 0
-    mov F_EE_CGameEffectCGameEffect, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCGameEffectCopyFromBase, 0
-    mov F_EE_CGameEffectCopyFromBase, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCGameEffectGetItemEffect, 0
-    mov F_EE_CGameEffectGetItemEffect, eax
-    ; Misc
-    Invoke IniReadValue, Addr szIniEEex, Addr szCGameObjectArrayGetDeny, 0
-    mov F_EE_CGameObjectArrayGetDeny, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCGameEffectFireSpell, 0
-    mov F_EE_CGameEffectFireSpell, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCGameAIBaseFireSpellPoint, 0
-    mov F_EE_CGameAIBaseFireSpellPoint, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szdimmGetResObject, 0
-    mov F_EE_dimmGetResObject, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCAIActionDecode, 0
-    mov F_EE_CAIActionDecode, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCGameObjectArrayGetDeny, 0
-    mov F_EE_CGameObjectArrayGetDeny, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCListRemoveAt, 0
-    mov F_EE_CListRemoveAt, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCRuleTablesMapCSTS, 0
-    mov F_EE_CRuleTablesMapCSTS, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szoperator_new, 0
-    mov F_EE_operator_new, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szCAIScriptCAIScript, 0
-    mov F_EE_CAIScriptCAIScript, eax
-    ; Other functions
-    Invoke IniReadValue, Addr szIniEEex, Addr sz_ftol2_sse, 0
-    mov F__ftol2_sse, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr sz_mbscmp, 0
-    mov F__mbscmp, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr szp_malloc, 0
-    mov F_p_malloc, eax
-
-
-    ;--------------------------------------------------------------------------
-    ; Read in pattern addresses of game globals if present in ini file
-    ;--------------------------------------------------------------------------
-    Invoke IniReadValue, Addr szIniEEex, Addr sz_pp_pChitin, 0
-    mov pp_pChitin, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr sz_pp_pBaldurChitin, 0
-    mov pp_pBaldurChitin, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr sz_pp_backgroundMenu, 0
-    mov pp_backgroundMenu, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr sz_pp_overlayMenu, 0
-    mov pp_overlayMenu, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr sz_pp_timer_ups, 0
-    mov pp_timer_ups, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr sz_pp_aB_1, 0
-    mov pp_aB_1, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr sz_pp_CGameSprite_vftable, 0
-    mov pp_CGameSprite_vftable, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr sz_pp_CAIObjectTypeANYONE, 0
-    mov pp_CAIObjectTypeANYONE, eax
-    Invoke IniReadValue, Addr szIniEEex, Addr sz_pp_VersionString_Push, 0
-    mov pp_VersionString_Push, eax
     xor eax, eax
     ret
 EEexInitGlobals ENDP
+
+
+EEEX_ALIGN
+;------------------------------------------------------------------------------
+; EEexImportPatterns - Import patterns from patterns database file: EEex.db
+; Returns: TRUE if all patterns were imported without errors, FALSE otherwise
+; Note: FALSE can indicate some patterns were skipped due to missing PatBytes
+; or could be other errors. PatAdj field will hold an integer repesenting
+; the IMP_ERR_xxxxx status of the PATTERN entry that had an error. 
+;------------------------------------------------------------------------------
+EEexImportPatterns PROC USES EBX
+    LOCAL lpszPatternName:DWORD
+    LOCAL lpszPatBytesText:DWORD
+    LOCAL lpszVerBytesText:DWORD
+    LOCAL dwLenPatBytesText:DWORD
+    LOCAL dwLenVerBytesText:DWORD
+    LOCAL lpPatBytes:DWORD
+    LOCAL lpVerBytes:DWORD
+    LOCAL dwPatLength:DWORD
+    LOCAL dwVerLength:DWORD
+    LOCAL dwPatAdj:DWORD
+    LOCAL dwVerAdj:DWORD
+    LOCAL dwPatType:DWORD
+    LOCAL nPattern:DWORD
+    LOCAL pPatternEntry:DWORD
+    LOCAL dwImportError:DWORD
+    
+    IFDEF DEBUG32
+    PrintText 'EEexImportPatterns'
+    ENDIF
+    
+    ;--------------------------------------------------------------------------
+    ; Get pattern names and pattern count from external patterns database file
+    ;--------------------------------------------------------------------------
+    Invoke IniGetPatternNames ; returns count of pattern names in szIniPatternNames
+    .IF eax == -1 ; too many pattern names to fit into max buffer size
+        IFDEF EEEX_LOGGING
+        .IF gEEexLog > LOGLEVEL_NONE
+            Invoke LogOpen, FALSE
+            Invoke LogMessage, Addr szErrorPatternsToMany, LOG_ERROR, 0
+            Invoke LogMessage, 0, LOG_CRLF, 0
+        .ENDIF
+        ENDIF
+        mov eax, FALSE
+        ret
+    .ELSEIF eax == 0 ; no patterns
+        IFDEF EEEX_LOGGING
+        .IF gEEexLog > LOGLEVEL_NONE
+            Invoke LogOpen, FALSE
+            Invoke LogMessage, Addr szErrorPatternsNone, LOG_ERROR, 0
+            Invoke LogMessage, 0, LOG_CRLF, 0
+        .ENDIF
+        ENDIF
+        mov eax, FALSE
+        ret
+    .ELSE
+        ; else eax contains total patterns from return of IniGetPatternNames
+    .ENDIF
+    mov TotalPatterns, eax
+    mov TotalPatternsToImport, eax
+    .IF eax > INI_MAXSECTIONS
+        ; some sort of warning to user?
+    .ENDIF
+    
+    IFDEF DEBUG32
+    PrintDec TotalPatternsToImport
+    ENDIF
+    
+    ;--------------------------------------------------------------------------
+    ; Allocate memory for patterns to import to array of PATTERN structures
+    ;--------------------------------------------------------------------------
+    mov eax, TotalPatternsToImport
+    add eax, 4
+    mov ebx, SIZEOF PATTERN
+    mul ebx
+    Invoke GlobalAlloc, GMEM_FIXED or GMEM_ZEROINIT, eax
+    .IF eax == NULL ; failed to alloc mem
+        IFDEF EEEX_LOGGING
+        .IF gEEexLog > LOGLEVEL_NONE
+            Invoke LogOpen, FALSE
+            Invoke LogMessage, Addr szErrorPatternsAlloc, LOG_ERROR, 0
+            Invoke LogMessage, 0, LOG_CRLF, 0
+        .ENDIF
+        ENDIF
+        mov eax, FALSE
+        ret
+    .ENDIF
+    mov PatternsDatabase, eax
+    mov pPatternEntry, eax
+    
+    
+    ;--------------------------------------------------------------------------
+    ; Loop through each pattern name (section name) from pattern database file
+    ; Convert PatBytes from text hexidecimal to raw bytes and get length
+    ; Convert VerBytes from text hexidecimal to raw bytes and get length
+    ; Alloc space for PatBytes and VerBytes
+    ; Get PatAdj, VerAdj and Type
+    ; Fill in PATTERN structure for pattern entry with pointers to pattern name
+    ; (section name), pointers to PatBytes and VerBytes, and values for
+    ; PatAdj, VerAdj and Type
+    ;--------------------------------------------------------------------------
+    mov dwImportError, 0
+    mov lpPatBytes, 0
+    mov lpVerBytes, 0
+    mov dwPatLength, 0
+    mov dwVerLength, 0
+    mov dwPatAdj, 0
+    mov dwVerAdj, 0
+    mov dwPatType, 0
+    mov nPattern, 0
+    mov ebx, pPatternEntry
+    
+    Invoke IniGetNextPatternName
+    .WHILE eax != 0
+        mov lpszPatternName, eax ; store pointer to pattern name
+        
+        IFDEF DEBUG32
+        ;PrintStringByAddr lpszPatternName
+        ENDIF
+        
+        ;----------------------------------------------------------------------
+        ; Get PatBytes hex text chars for <PatternName>
+        ;----------------------------------------------------------------------     
+        Invoke IniGetPatBytesText, lpszPatternName, Addr lpszPatBytesText
+        .IF eax == 0 ; PatBytes entry is empty
+            mov dwImportError, IMP_ERR_PATBYTES_EMPTY
+            mov lpPatBytes, 0
+        .ELSE
+            ;------------------------------------------------------------------
+            ; Convert PatBytes entry from text hex chars to raw byte pattern
+            ;------------------------------------------------------------------
+            mov dwLenPatBytesText, eax
+            shr eax, 1 ; div by 2
+            add eax, 4
+            mov dwPatLength, eax
+             Invoke GlobalAlloc, GMEM_FIXED or GMEM_ZEROINIT, dwPatLength
+            .IF eax == NULL
+                mov dwImportError, IMP_ERR_PATBYTES_ALLOC
+                mov lpPatBytes, 0
+            .ELSE
+                mov lpPatBytes, eax
+                Invoke EEexHexStringToRaw, lpszPatBytesText, lpPatBytes
+                .IF eax == 0
+                    mov dwImportError, IMP_ERR_PATBYTES_NOTHEX
+                    mov lpPatBytes, 0
+                .ELSE
+                    mov dwPatLength, eax ; update the correct pattern lenght
+                .ENDIF
+            .ENDIF
+            
+            .IF lpPatBytes != 0
+                ;--------------------------------------------------------------
+                ; Get VerBytes hex text chars for <PatternName>
+                ;--------------------------------------------------------------
+                Invoke IniGetVerBytesText, lpszPatternName, Addr lpszVerBytesText
+                .IF eax == 0 ; VerBytes entry is empty - which is allowed
+                    mov lpVerBytes, 0
+                    mov dwVerLength, 0
+                    mov dwVerAdj, 0
+                    mov dwImportError, IMP_ERR_VERBYTES_EMPTY ; this is allowed
+                .ELSE
+                    ;----------------------------------------------------------
+                    ; Convert VerBytes entry from text hex chars to raw byte pattern
+                    ;----------------------------------------------------------
+                    mov dwLenVerBytesText, eax
+                    shr eax, 1 ; div by 2
+                    add eax, 4
+                    mov dwVerLength, eax
+                    Invoke GlobalAlloc, GMEM_FIXED or GMEM_ZEROINIT, dwVerLength
+                    .IF eax == NULL
+                        .IF lpPatBytes!= 0
+                            mov eax, lpPatBytes
+                            Invoke GlobalFree, eax
+                        .ENDIF
+                        mov dwImportError, IMP_ERR_VERBYTES_ALLOC
+                        mov lpPatBytes, 0
+                    .ELSE
+                        mov lpVerBytes, eax
+                        Invoke EEexHexStringToRaw, lpszVerBytesText, lpVerBytes
+                        .IF eax == 0
+                            mov dwImportError, IMP_ERR_VERBYTES_NOTHEX
+                            mov lpPatBytes, 0
+                        .ELSE
+                            mov dwVerLength, eax ; update the correct pattern lenght
+                        .ENDIF                        
+                    .ENDIF
+                .ENDIF
+            .ENDIF
+            
+            ;------------------------------------------------------------------
+            ; Get PatAdj, VerAdj and PatType values for <PatternName>
+            ;------------------------------------------------------------------
+            .IF lpPatBytes != 0
+                Invoke IniGetPatAdj, lpszPatternName
+                mov dwPatAdj, eax
+                Invoke IniGetVerAdj, lpszPatternName
+                mov dwVerAdj, eax
+                Invoke IniGetPatType, lpszPatternName
+                mov dwPatType, eax
+            .ENDIF
+        .ENDIF
+        
+        ;----------------------------------------------------------------------  
+        ; Add information to PATTERN entry
+        ;----------------------------------------------------------------------  
+        .IF lpPatBytes != 0
+        
+            IFDEF DEBUG32
+            ;PrintText 'Pattern imported to PatternDatabase'
+            ;PrintDec nPattern
+            ENDIF        
+        
+            mov ebx, pPatternEntry
+            mov eax, lpPatBytes
+            mov [ebx].PATTERN.PatBytes, eax
+            mov eax, lpVerBytes
+            mov [ebx].PATTERN.VerBytes, eax
+            mov eax, dwPatLength
+            mov [ebx].PATTERN.PatLength, eax
+            mov eax, dwVerLength
+            mov [ebx].PATTERN.VerLength, eax
+            mov eax, dwPatAdj
+            mov [ebx].PATTERN.PatAdj, eax
+            mov eax, dwVerAdj
+            mov [ebx].PATTERN.VerAdj, eax
+            mov eax, dwPatType
+            mov [ebx].PATTERN.PatType, eax
+            mov eax, lpszPatternName
+            mov [ebx].PATTERN.PatName, eax
+            
+            .IF gEEexLua == TRUE
+                Invoke EEexIsStaticLua, lpszPatternName ; See if pattern name matches static lua address
+                .IF eax != 0 ; matches known lua static
+                    mov ebx, pPatternEntry
+                    mov [ebx].PATTERN.bFound, TRUE ; set to true to skip verification
+                    mov [ebx].PATTERN.PatAddress, eax
+                    inc SkippedImportedPatterns
+                .ELSE
+                    ; Get <PatternName> from EEex.ini - if it exists, which will speed up verification
+                    Invoke IniReadValue, Addr szIniEEex, lpszPatternName, 0
+                    mov ebx, pPatternEntry
+                    mov [ebx].PATTERN.PatAddress, eax
+                    inc ImportedPatterns
+                .ENDIF
+            .ELSE
+                ; Get <PatternName> from EEex.ini - if it exists, which will speed up verification
+                Invoke IniReadValue, Addr szIniEEex, lpszPatternName, 0
+                mov ebx, pPatternEntry
+                .IF eax != 0
+                    mov [ebx].PATTERN.PatAddress, eax
+                .ELSE
+                    mov [ebx].PATTERN.PatAddress, 0
+                .ENDIF
+                inc ImportedPatterns
+            .ENDIF
+
+        .ELSE
+
+            IFDEF DEBUG32
+            PrintText 'Pattern import issue'
+            PrintDec nPattern
+            PrintDec dwImportError
+            ENDIF
+            
+            ; Add pattern name at least and set some field to indicate error reason
+            mov ebx, pPatternEntry
+            mov eax, lpszPatternName
+            mov [ebx].PATTERN.PatName, eax
+            mov [ebx].PATTERN.PatBytes, 0
+            mov [ebx].PATTERN.PatAddress, 0
+            mov eax, dwImportError
+            mov [ebx].PATTERN.PatAdj, eax
+            inc NotImportedPatterns
+        .ENDIF
+        
+        ;----------------------------------------------------------------------  
+        ; Setup for next pattern entry
+        ;----------------------------------------------------------------------
+        inc nPattern
+        add pPatternEntry, SIZEOF PATTERN
+        Invoke IniGetNextPatternName
+    .ENDW
+
+    mov eax, ImportedPatterns
+    add eax, SkippedImportedPatterns
+    .IF eax == TotalPatternsToImport && TotalPatternsToImport != 0; imported all patterns!
+        mov eax, TRUE
+    .ELSE
+        mov eax, FALSE
+    .ENDIF    
+    
+    ret
+EEexImportPatterns ENDP
 
 
 EEEX_ALIGN
@@ -700,6 +710,8 @@ EEEX_ALIGN
 EEexVerifyPatterns PROC USES EBX
     LOCAL nPattern:DWORD
     LOCAL ptrCurrentPattern:DWORD
+    LOCAL dwAddress:DWORD
+    LOCAL dwAddressMax:DWORD
     LOCAL PatAddress:DWORD
     LOCAL PatBytes:DWORD
     LOCAL PatLength:DWORD
@@ -707,18 +719,26 @@ EEexVerifyPatterns PROC USES EBX
     LOCAL VerBytes:DWORD
     LOCAL VerLength:DWORD
 
-    lea ebx, Patterns
+    IFDEF DEBUG32
+    PrintText 'EEexVerifyPatterns'
+    ENDIF
+
+    ;mov eax, EEGameSectionTEXTPtr
+    ;add eax, EEGameSectionTEXTSize
+    ;mov dwAddressMax, eax
+
+    mov ebx, PatternsDatabase
     mov ptrCurrentPattern, ebx
     mov nPattern, 0
     mov eax, 0
     .WHILE eax < TotalPatterns
-        mov eax, [ebx].PATTERN.FuncAddress
-        mov eax, [eax] ; FuncAddress is pointer to global var storing address - no GetIni for pattern address yet?
-        .IF eax == 0 ; just in case
-            IFDEF DEBUG32
-            PrintText 'FuncAddress is pointer to global var is null.'
-            PrintDec nPattern
-            ENDIF
+        mov eax, [ebx].PATTERN.PatAddress
+        ;mov eax, [eax] ; PatAddress is address of function or global
+        .IF eax == 0 ;|| eax > dwAddressMax ; just in case
+            ;IFDEF DEBUG32
+            ;PrintText 'PatAddress is null.'
+            ;PrintDec nPattern
+            ;ENDIF
             inc NotVerifiedPatterns
             add ptrCurrentPattern, SIZEOF PATTERN
             mov ebx, ptrCurrentPattern
@@ -726,64 +746,73 @@ EEexVerifyPatterns PROC USES EBX
             mov eax, nPattern
             .CONTINUE
         .ENDIF
-
+        
+        ;PrintText 'EEexVerifyPatterns - pattern has address'
+        ;PrintDec nPattern
+        ;PrintDec eax
+        
+        mov PatAddress, eax
         mov ebx, ptrCurrentPattern
         sub eax, [ebx].PATTERN.PatAdj ; subtract adjustment to get pattern
-        mov PatAddress, eax
+        mov dwAddress, eax
 
         mov eax, [ebx].PATTERN.PatBytes
-        mov PatBytes, eax
-        mov eax, [ebx].PATTERN.PatLength
-        mov PatLength, eax
-
-        ; check pattern matches
-        Invoke PatternVerify, PatAddress, PatBytes, PatLength
-        mov ebx, ptrCurrentPattern
-        .IF eax == TRUE
-            mov eax, [ebx].PATTERN.VerLength
-            .IF eax != 0 ; Check VerBytes pattern if it exists as well
-                mov VerLength, eax
-                mov eax, [ebx].PATTERN.VerBytes
-                mov VerBytes, eax
-                mov eax, PatAddress
-                add eax, [ebx].PATTERN.VerAdj
-                Invoke PatternVerify, eax, VerBytes, VerLength
-            .ELSE
-                mov eax, TRUE ; No verbytes to check so set to TRUE
-            .ENDIF
-
+        .IF eax != NULL
+            mov PatBytes, eax
+            mov eax, [ebx].PATTERN.PatLength
+            mov PatLength, eax
+    
+            ; check pattern matches
+            Invoke PatternVerify, dwAddress, PatBytes, PatLength
             mov ebx, ptrCurrentPattern
-            .IF eax == TRUE ; No verbytes to check or verbytes matched
-                .IF [ebx].PATTERN.PatType == 1 ; global/variable, so read it
-                    IFDEF DEBUG32
-                    PrintText 'Pattern address for a global found'
-                    PrintDec nPattern
-                    ENDIF
-                .ELSEIF [ebx].PATTERN.PatType == 2 ; call x type pattern, so read it
-                    IFDEF DEBUG32
-                    PrintText 'Pattern address for a call x found'
-                    PrintDec nPattern
-                    ENDIF
+            .IF eax == TRUE
+                mov eax, [ebx].PATTERN.VerLength
+                .IF eax != 0 ; Check VerBytes pattern if it exists as well
+                    mov VerLength, eax
+                    mov eax, [ebx].PATTERN.VerBytes
+                    mov VerBytes, eax
+                    mov eax, dwAddress
+                    add eax, [ebx].PATTERN.VerAdj
+                    Invoke PatternVerify, eax, VerBytes, VerLength
+                .ELSE
+                    mov eax, TRUE ; No verbytes to check so set to TRUE
                 .ENDIF
-                mov [ebx].PATTERN.bFound, TRUE
-                inc VerifiedPatterns
-                inc FoundPatterns
+    
+                mov ebx, ptrCurrentPattern
+                .IF eax == TRUE ; No verbytes to check or verbytes matched
+                    .IF [ebx].PATTERN.PatType == 1 ; global/variable, so read it
+                        IFDEF DEBUG32
+                        PrintText 'Pattern address for a global found'
+                        PrintDec nPattern
+                        ENDIF
+                    .ELSEIF [ebx].PATTERN.PatType == 2 ; call x type pattern, so read it
+                        IFDEF DEBUG32
+                        PrintText 'Pattern address for a call x found'
+                        PrintDec nPattern
+                        ENDIF
+                    .ENDIF
+                    mov [ebx].PATTERN.bFound, TRUE
+                    inc VerifiedPatterns
+                    inc FoundPatterns
+                .ELSE
+                    IFDEF DEBUG32
+                    PrintText 'Pattern found but not verified'
+                    PrintDec nPattern
+                    ENDIF
+                    mov [ebx].PATTERN.bFound, FALSE
+                .ENDIF
             .ELSE
+                inc NotVerifiedPatterns
                 IFDEF DEBUG32
-                PrintText 'Pattern found but not verified'
+                PrintText 'Pattern not found'
                 PrintDec nPattern
                 ENDIF
                 mov [ebx].PATTERN.bFound, FALSE
-            .ENDIF
+             .ENDIF
         .ELSE
-            inc NotVerifiedPatterns
-            IFDEF DEBUG32
-            PrintText 'Pattern not found'
-            PrintDec nPattern
-            ENDIF
-            mov [ebx].PATTERN.bFound, FALSE
-         .ENDIF
-
+            inc SkippedVerifyPatterns
+        .ENDIF
+        
         add ptrCurrentPattern, SIZEOF PATTERN
         mov ebx, ptrCurrentPattern
         inc nPattern
@@ -791,11 +820,11 @@ EEexVerifyPatterns PROC USES EBX
     .ENDW
 
     mov eax, VerifiedPatterns
-    add eax, SkippedPatterns
-    .IF eax != TotalPatterns
-        mov eax, FALSE
-    .ELSE
+    add eax, SkippedVerifyPatterns
+    .IF eax == TotalPatterns && TotalPatterns != 0
         mov eax, TRUE
+    .ELSE
+        mov eax, FALSE
     .ENDIF
 
     ret
@@ -818,8 +847,6 @@ EEexSearchPatterns PROC USES EBX ESI
     LOCAL dwAddress:DWORD
     LOCAL dwAddressFinish:DWORD
     LOCAL dwAddressValue:DWORD
-    LOCAL PatAddress:DWORD
-    LOCAL PatAddressValue:DWORD
     LOCAL PatAdj:DWORD
     LOCAL PatBytes:DWORD
     LOCAL PatLength:DWORD
@@ -827,6 +854,10 @@ EEexSearchPatterns PROC USES EBX ESI
     LOCAL VerBytes:DWORD
     LOCAL VerLength:DWORD
     LOCAL RetVal:DWORD
+
+    IFDEF DEBUG32
+    PrintText 'EEexSearchPatterns'
+    ENDIF
 
     mov RetVal, FALSE
 
@@ -840,61 +871,68 @@ EEexSearchPatterns PROC USES EBX ESI
         mov eax, [esi]
         mov dwAddressValue, eax
 
-        lea ebx, Patterns
+        mov ebx, PatternsDatabase
         mov ptrCurrentPattern, ebx
         mov nPattern, 0
         mov eax, 0
         .WHILE eax < TotalPatterns
             .IF [ebx].PATTERN.bFound == FALSE
                 mov eax, [ebx].PATTERN.PatBytes
-                mov PatBytes, eax
-                mov eax, [eax]
-                .IF eax == dwAddressValue ; might have a start of a pattern
-                    mov eax, [ebx].PATTERN.PatLength
-                    mov PatLength, eax
-                    Invoke PatternVerify, dwAddress, PatBytes, PatLength
-                    .IF eax == TRUE ; Matched a pattern
-                        mov ebx, ptrCurrentPattern
-                        mov eax, [ebx].PATTERN.VerLength
-                        .IF eax != 0 ; Check VerBytes pattern if it exists as well
-                            mov VerLength, eax
-                            mov eax, [ebx].PATTERN.VerBytes
-                            mov VerBytes, eax
-                            mov eax, dwAddress
-                            add eax, [ebx].PATTERN.VerAdj
-                            Invoke PatternVerify, eax, VerBytes, VerLength
-                        .ELSE
-                            mov eax, TRUE ; No verbytes to check so set to TRUE
-                        .ENDIF
-
-                        .IF eax == TRUE ; No verbytes to check or verbytes matched
+                .IF eax != NULL
+                    mov PatBytes, eax
+                    mov eax, [eax]
+                    .IF eax == dwAddressValue ; might have a start of a pattern
+                        mov eax, [ebx].PATTERN.PatLength
+                        mov PatLength, eax
+                        Invoke PatternVerify, dwAddress, PatBytes, PatLength
+                        .IF eax == TRUE ; Matched a pattern
                             mov ebx, ptrCurrentPattern
-                            mov [ebx].PATTERN.bFound, TRUE
-                            mov eax, dwAddress
-                            add eax, [ebx].PATTERN.PatAdj
-                            ;.IF [ebx].PATTERN.PatType == 1 ; global/variable
-                            ;    PrintDec eax
-                            ;    mov eax, [eax] ; read dword to get pointer to EE game global
-                            ;    PrintDec eax
-                            ;.ENDIF
-                            mov ebx, [ebx].PATTERN.FuncAddress ; Offset to internal global var to set for address
-                            .IF ebx != 0
-                                mov [ebx], eax ; store address in our internal global var
+                            mov eax, [ebx].PATTERN.VerLength
+                            .IF eax != 0 ; Check VerBytes pattern if it exists as well
+                                mov VerLength, eax
+                                mov eax, [ebx].PATTERN.VerBytes
+                                mov VerBytes, eax
+                                mov eax, dwAddress
+                                add eax, [ebx].PATTERN.VerAdj
+                                Invoke PatternVerify, eax, VerBytes, VerLength
+                            .ELSE
+                                mov eax, TRUE ; No verbytes to check so set to TRUE
                             .ENDIF
-                            inc FoundPatterns ; PatternsFound
-                        .ELSE ; pattern is similar to another but wasnt found and verified yet: A Get/Set function with minor differences?
-                            IFDEF DEBUG32
-                            PrintText 'EEexSearchPatterns - Failed to verify pattern'
-                            PrintDec nPattern
-                            ENDIF
-                            ;mov ebx, ptrCurrentPattern
-                            ;mov eax, 0
-                            ;mov ebx, [ebx].PATTERN.FuncAddress ; Offset to internal global var to set for address
-                            ;mov [ebx], eax ; store address in our internal global var
-                            ;inc FoundPatterns ; PatternsFound
+    
+                            .IF eax == TRUE ; No verbytes to check or verbytes matched
+                                mov ebx, ptrCurrentPattern
+                                mov [ebx].PATTERN.bFound, TRUE
+                                mov eax, dwAddress
+                                add eax, [ebx].PATTERN.PatAdj
+                                mov [ebx].PATTERN.PatAddress, eax
+                                ;mov ebx, [ebx].PATTERN.FuncAddress ; Offset to internal global var to set for address
+                                ;.IF ebx != 0
+                                ;    mov [ebx], eax ; store address in our internal global var
+                                ;.ENDIF
+                                inc FoundPatterns ; PatternsFound
+                                
+                                ; Free pattern memory as we dont need it anymore
+                                mov ebx, ptrCurrentPattern
+                                mov eax, [ebx].PATTERN.PatBytes
+                                .IF eax != NULL && [ebx].PATTERN.PatLength != 0
+                                    Invoke GlobalFree, eax
+                                .ENDIF
+                                mov ebx, ptrCurrentPattern
+                                mov eax, [ebx].PATTERN.VerBytes
+                                .IF eax != NULL && [ebx].PATTERN.VerLength != 0
+                                    Invoke GlobalFree, eax
+                                .ENDIF
+                                
+                            .ELSE ; pattern is similar to another but wasnt found and verified yet: A Get/Set function with minor differences?
+                                ;IFDEF DEBUG32
+                                ;PrintText 'EEexSearchPatterns - Failed to verify pattern'
+                                ;PrintDec nPattern
+                                ;ENDIF
+                            .ENDIF
                         .ENDIF
-
                     .ENDIF
+                .ELSE
+                    inc SkippedFoundPatterns
                 .ENDIF
             .ENDIF
 
@@ -905,6 +943,7 @@ EEexSearchPatterns PROC USES EBX ESI
         .ENDW
 
         mov eax, FoundPatterns ; PatternsFound
+        add eax, SkippedFoundPatterns
         .IF eax == TotalPatterns ; found all patterns!
             mov RetVal, TRUE
             .BREAK
@@ -922,7 +961,7 @@ EEexSearchPatterns PROC USES EBX ESI
         PrintDec TotalPatterns
         PrintDec FoundPatterns
         ENDIF
-        lea ebx, Patterns
+        mov ebx, PatternsDatabase
         mov ptrCurrentPattern, ebx
         mov nPattern, 0
         mov eax, 0
@@ -932,9 +971,10 @@ EEexSearchPatterns PROC USES EBX ESI
                 IFDEF DEBUG32
                 PrintDec nPattern
                 ENDIF
-                mov eax, 0 ; set to 0 so we dont use existing value read from ini
-                mov ebx, [ebx].PATTERN.FuncAddress ; Offset to internal global var to set for address
-                mov [ebx], eax                
+                mov [ebx].PATTERN.PatAddress, 0
+                ;mov eax, 0 ; set to 0 so we dont use existing value read from ini
+                ;mov ebx, [ebx].PATTERN.Patddress ; Offset to internal global var to set for address
+                ;mov [ebx], eax                
             .ENDIF
             add ptrCurrentPattern, SIZEOF PATTERN
             mov ebx, ptrCurrentPattern
@@ -950,934 +990,319 @@ EEexSearchPatterns ENDP
 
 EEEX_ALIGN
 ;------------------------------------------------------------------------------
-; EEexFallbackAddresses - Checks ini file to for functions addresses manually
-; set in the [Fallback] section.
-;
-; These address values for functions can be used in cases where a new EE game
-; build is released and pattern match fails. These fallback hardcoded address
-; values can be used instead - specific to a particular build of the EE game.
-;
-; After a newer build/update for the EEex loader and dll, when patterns are
-; found again, then the [Fallback] section is cleared to prevent newer EE game
-; builds in future from triggering the read of now (possibly) invalid fallback
-; addresses.
-;
-; Typical scenario for usage is that info from a forum post etc will indicate
-; the raw hardcoded addresses to use. User then edits EEex.ini to add a
-; [Fallback] section and the function addresses.
-;
-; Returns: TRUE if all functions have address values. FALSE otherwise.
-;
-; NOTE: EE Game will crash if incorrect fallback addresses are specified.
-; Users should only add these fallback addresses if instructed to do so, and
-; only for a temporary fix until a new EEex loader build is released.
-
+; EEexPatchLocation - Get patch location address from pattern database
+; should be first entry in database!
+; Returns: in eax the address of PatchLocation or 0 if not found
 ;------------------------------------------------------------------------------
-EEexFallbackAddresses PROC
+EEexPatchLocation PROC USES EBX
+    LOCAL pPatternEntry:DWORD
+    
+    IFDEF DEBUG32
+    PrintText 'EEexPatchLocation'
+    ENDIF    
+    
+    mov ebx, PatternsDatabase
+    mov pPatternEntry, ebx    
+    
+    mov eax, [ebx].PATTERN.PatName
+    .IF eax != 0
+        mov ebx, eax
+        mov eax, [ebx]
+        mov ebx, [ebx+4]
+        .IF eax == 'ctaP' && ebx == 'coLh' ; Patc hLoc
+            mov ebx, pPatternEntry
+            mov eax, [ebx].PATTERN.PatAddress
+        .ELSE
+            mov eax, 0
+        .ENDIF
+    .ELSE
+        mov eax, 0
+    .ENDIF
+    ret
+EEexPatchLocation ENDP
 
-    .IF PatchLocation == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szPatchLocation, 0
-        mov PatchLocation, eax
+
+EEEX_ALIGN
+;------------------------------------------------------------------------------
+; EEexIsStaticLua - Returns address of static lua function if <PatternName>
+; matches, otherwise returns 0
+;------------------------------------------------------------------------------
+EEexIsStaticLua PROC USES EBX lpszPatternName:DWORD
+
+    IFDEF DEBUG32
+    PrintText 'EEexIsStaticLua'
+    ENDIF
+    
+    IFDEF EEEX_LUALIB
+    .IF lpszPatternName == NULL
+        xor eax, eax
+        ret
     .ENDIF
     
-    .IF gEEexLua == FALSE
-        ;--------------------------------------------------------------------------
-        ; Read in FALLBACK pattern addresses of Lua functions if present in ini file
-        ;--------------------------------------------------------------------------    
-        .IF F_Lua_createtable == 0
-            Invoke IniReadValue, Addr szIniEEexFallback, Addr szLua_createtable, 0
-            mov F_Lua_createtable, eax
-        .ENDIF
-        .IF F_Lua_getglobal == 0
-            Invoke IniReadValue, Addr szIniEEexFallback, Addr szLua_getglobal, 0
-            mov F_Lua_getglobal, eax
-        .ENDIF
-        .IF F_Lua_gettop == 0
-            Invoke IniReadValue, Addr szIniEEexFallback, Addr szLua_gettop, 0
-            mov F_Lua_gettop, eax
-        .ENDIF
-        .IF F_Lua_pcallk == 0
-            Invoke IniReadValue, Addr szIniEEexFallback, Addr szLua_pcallk, 0
-            mov F_Lua_pcallk, eax
-        .ENDIF
-        .IF F_Lua_pushcclosure == 0
-            Invoke IniReadValue, Addr szIniEEexFallback, Addr szLua_pushcclosure, 0
-            mov F_Lua_pushcclosure, eax
-        .ENDIF
-        .IF F_Lua_pushlightuserdata == 0
-            Invoke IniReadValue, Addr szIniEEexFallback, Addr szLua_pushlightuserdata, 0
-            mov F_Lua_pushlightuserdata, eax
-        .ENDIF
-        .IF F_Lua_pushlstring == 0
-            Invoke IniReadValue, Addr szIniEEexFallback, Addr szLua_pushlstring, 0
-            mov F_Lua_pushlstring, eax
-        .ENDIF
-        .IF F_Lua_pushnumber == 0
-            Invoke IniReadValue, Addr szIniEEexFallback, Addr szLua_pushnumber, 0
-            mov F_Lua_pushnumber, eax
-        .ENDIF
-        .IF F_Lua_pushstring == 0
-            Invoke IniReadValue, Addr szIniEEexFallback, Addr szLua_pushstring, 0
-            mov F_Lua_pushstring, eax
-        .ENDIF
-        .IF F_Lua_rawgeti == 0
-            Invoke IniReadValue, Addr szIniEEexFallback, Addr szLua_rawgeti, 0
-            mov F_Lua_rawgeti, eax
-        .ENDIF
-        .IF F_Lua_rawlen == 0
-            Invoke IniReadValue, Addr szIniEEexFallback, Addr szLua_rawlen, 0
-            mov F_Lua_rawlen, eax
-        .ENDIF
-        .IF F_Lua_setfield == 0
-            Invoke IniReadValue, Addr szIniEEexFallback, Addr szLua_setfield, 0
-            mov F_Lua_setfield, eax
-        .ENDIF
-        .IF F_Lua_setglobal == 0
-            Invoke IniReadValue, Addr szIniEEexFallback, Addr szLua_setglobal, 0
-            mov F_Lua_setglobal, eax
-        .ENDIF
-        .IF F_Lua_settable == 0
-            Invoke IniReadValue, Addr szIniEEexFallback, Addr szLua_settable, 0
-            mov F_Lua_settable, eax
-        .ENDIF
-        .IF F_Lua_settop == 0
-            Invoke IniReadValue, Addr szIniEEexFallback, Addr szLua_settop, 0
-            mov F_Lua_settop, eax
-        .ENDIF
-        .IF F_Lua_toboolean == 0
-            Invoke IniReadValue, Addr szIniEEexFallback, Addr szLua_toboolean, 0
-            mov F_Lua_toboolean, eax
-        .ENDIF
-        .IF F_Lua_tolstring == 0
-            Invoke IniReadValue, Addr szIniEEexFallback, Addr szLua_tolstring, 0
-            mov F_Lua_tolstring, eax
-        .ENDIF
-        .IF F_Lua_tonumberx == 0
-            Invoke IniReadValue, Addr szIniEEexFallback, Addr szLua_tonumberx, 0
-            mov F_Lua_tonumberx, eax
-        .ENDIF
-        .IF F_Lua_touserdata == 0
-            Invoke IniReadValue, Addr szIniEEexFallback, Addr szLua_touserdata, 0
-            mov F_Lua_touserdata, eax
-        .ENDIF
-        .IF F_Lua_type == 0
-            Invoke IniReadValue, Addr szIniEEexFallback, Addr szLua_type, 0
-            mov F_Lua_type, eax
-        .ENDIF
-        .IF F_Lua_typename == 0
-            Invoke IniReadValue, Addr szIniEEexFallback, Addr szLua_typename, 0
-            mov F_Lua_typename, eax
-        .ENDIF
-        .IF F_LuaL_loadstring == 0
-            Invoke IniReadValue, Addr szIniEEexFallback, Addr szLuaL_loadstring, 0
-            mov F_LuaL_loadstring, eax
-        .ENDIF
-    .ENDIF
-
-    ;--------------------------------------------------------------------------
-    ; Read in FALLBACK pattern addresses of game functions if present in ini file
-    ;--------------------------------------------------------------------------
-    ; CAIObjectType
-    .IF F_EE_CAIObjectTypeDecode == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCAIObjectTypeDecode, 0
-        mov F_EE_CAIObjectTypeDecode, eax
-    .ENDIF
-    .IF F_EE_CAIObjectTypeRead == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCAIObjectTypeRead, 0
-        mov F_EE_CAIObjectTypeRead, eax
-    .ENDIF
-    .IF F_EE_CAIObjectTypeSet == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCAIObjectTypeSet, 0
-        mov F_EE_CAIObjectTypeSet, eax
-    .ENDIF
-    .IF F_EE_CAIObjectTypeSSC == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCAIObjectTypeSSC, 0
-        mov F_EE_CAIObjectTypeSSC, eax
-    .ENDIF
-    .IF F_EE_CAIObjectTypeOpEqu == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szIniCAIObjectTypeOpEqu, 0
-        mov F_EE_CAIObjectTypeOpEqu, eax
-    .ENDIF
-    ; CDerivedStats
-    .IF F_EE_CDerivedStatsGetAtOffset == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCDerivedStatsGetAtOffset, 0
-        mov F_EE_CDerivedStatsGetAtOffset, eax
-    .ENDIF
-    .IF F_EE_CDerivedStatsGetLevel == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCDerivedStatsGetLevel, 0
-        mov F_EE_CDerivedStatsGetLevel, eax
-    .ENDIF
-    .IF F_EE_CDerivedStatsSetLevel == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCDerivedStatsSetLevel, 0
-        mov F_EE_CDerivedStatsSetLevel, eax
-    .ENDIF
-    .IF F_EE_CDerivedStatsGetSpellState == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCDerivedStatsGetSpellState, 0
-        mov F_EE_CDerivedStatsGetSpellState, eax
-    .ENDIF
-    .IF F_EE_CDerivedStatsSetSpellState == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCDerivedStatsSetSpellState, 0
-        mov F_EE_CDerivedStatsSetSpellState, eax
-    .ENDIF
-    .IF F_EE_CDerivedStatsGetWarriorLevel == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCDerivedStatsGetWarriorLevel, 0
-        mov F_EE_CDerivedStatsGetWarriorLevel, eax
-    .ENDIF
-    .IF F_EE_CDerivedStatsReload == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCDerivedStatsReload, 0
-        mov F_EE_CDerivedStatsReload, eax
-    .ENDIF
-    ; CGameSprite
-    .IF F_EE_CGameSpriteCGameSprite == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCGameSpriteCGameSprite, 0
-        mov F_EE_CGameSpriteCGameSprite, eax
-    .ENDIF
-    .IF F_EE_CGameSpriteAddKnownSpell == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCGameSpriteAddKnownSpell, 0
-        mov F_EE_CGameSpriteAddKnownSpell, eax
-    .ENDIF
-    .IF F_EE_CGameSpriteAddKnownSpellMage == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCGameSpriteAddKnownSpellMage, 0
-        mov F_EE_CGameSpriteAddKnownSpellMage, eax
-    .ENDIF
-    .IF F_EE_CGameSpriteAddKnownSpellPriest == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCGameSpriteAddKnownSpellPriest, 0
-        mov F_EE_CGameSpriteAddKnownSpellPriest, eax
-    .ENDIF
-    .IF F_EE_CGameSpriteAddNewSA == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCGameSpriteAddNewSA, 0
-        mov F_EE_CGameSpriteAddNewSA, eax
-    .ENDIF
-    .IF F_EE_CGameSpriteGetActiveStats == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCGameSpriteGetActiveStats, 0
-        mov F_EE_CGameSpriteGetActiveStats, eax
-    .ENDIF
-    .IF F_EE_CGameSpriteGetActiveProficiency == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCGameSpriteGetActiveProficiency, 0
-        mov F_EE_CGameSpriteGetActiveProficiency, eax
-    .ENDIF
-    .IF F_EE_CGameSpriteGetKit == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCGameSpriteGetKit, 0
-        mov F_EE_CGameSpriteGetKit, eax
-    .ENDIF
-    .IF F_EE_CGameSpriteGetName == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCGameSpriteGetName, 0
-        mov F_EE_CGameSpriteGetName, eax
-    .ENDIF
-    .IF F_EE_CGameSpriteGetQuickButtons == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCGameSpriteGetQuickButtons, 0
-        mov F_EE_CGameSpriteGetQuickButtons, eax
-    .ENDIF
-    .IF F_EE_CGameSpriteMemorizeSpell == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCGameSpriteMemorizeSpell, 0
-        mov F_EE_CGameSpriteMemorizeSpell, eax
-    .ENDIF
-    .IF F_EE_CGameSpriteMemorizeSpellMage == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCGameSpriteMemorizeSpellMage, 0
-        mov F_EE_CGameSpriteMemorizeSpellMage, eax
-    .ENDIF
-    .IF F_EE_CGameSpriteMemorizeSpellPriest == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCGameSpriteMemorizeSpellPriest, 0
-        mov F_EE_CGameSpriteMemorizeSpellPriest, eax
-    .ENDIF
-    .IF F_EE_CGameSpriteMemorizeSpellInnate == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCGameSpriteMemorizeSpellInnate, 0
-        mov F_EE_CGameSpriteMemorizeSpellInnate, eax
-    .ENDIF
-    .IF F_EE_CGameSpriteReadySpell == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCGameSpriteReadySpell, 0
-        mov F_EE_CGameSpriteReadySpell, eax
-    .ENDIF
-    .IF F_EE_CGameSpriteRemoveKnownSpell == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCGameSpriteRemoveKnownSpell, 0
-        mov F_EE_CGameSpriteRemoveKnownSpell, eax
-    .ENDIF
-    .IF F_EE_CGameSpriteRemoveKnownSpellMage == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCGameSpriteRemoveKnownSpellMage, 0
-        mov F_EE_CGameSpriteRemoveKnownSpellMage, eax
-    .ENDIF
-    .IF F_EE_CGameSpriteRemoveKnownSpellPriest == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCGameSpriteRemoveKnownSpellPriest, 0
-        mov F_EE_CGameSpriteRemoveKnownSpellPriest, eax
-    .ENDIF
-    .IF F_EE_CGameSpriteRemoveKnownSpellInnate == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCGameSpriteRemoveKnownSpellInnate, 0
-        mov F_EE_CGameSpriteRemoveKnownSpellInnate, eax
-    .ENDIF
-    .IF F_EE_CGameSpriteRemoveNewSA == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCGameSpriteRemoveNewSA, 0
-        mov F_EE_CGameSpriteRemoveNewSA, eax
-    .ENDIF
-    .IF F_EE_CGameSpriteRenderHealthBar == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCGameSpriteRenderHealthBar, 0
-        mov F_EE_CGameSpriteRenderHealthBar, eax
-    .ENDIF
-    .IF F_EE_CGameSpriteSetCTT == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCGameSpriteSetCTT, 0
-        mov F_EE_CGameSpriteSetCTT, eax
-    .ENDIF
-    .IF F_EE_CGameSpriteSetColor == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCGameSpriteSetColor, 0
-        mov F_EE_CGameSpriteSetColor, eax
-    .ENDIF
-    .IF F_EE_CGameSpriteShatter == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCGameSpriteShatter, 0
-        mov F_EE_CGameSpriteShatter, eax
-    .ENDIF
-    .IF F_EE_CGameSpriteUnmemorizeSpellMage == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCGameSpriteUnmemorizeSpellMage, 0
-        mov F_EE_CGameSpriteUnmemorizeSpellMage, eax
-    .ENDIF
-    .IF F_EE_CGameSpriteUnmemorizeSpellPriest == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCGameSpriteUnmemorizeSpellPriest, 0
-        mov F_EE_CGameSpriteUnmemorizeSpellPriest, eax
-    .ENDIF
-    .IF F_EE_CGameSpriteUnmemorizeSpellInnate == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCGameSpriteUnmemorizeSpellInnate, 0
-        mov F_EE_CGameSpriteUnmemorizeSpellInnate, eax
-    .ENDIF
-    ; CInfinity
-    .IF F_EE_CInfinityDrawLine == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCInfinityDrawLine, 0
-        mov F_EE_CInfinityDrawLine, eax
-    .ENDIF
-    .IF F_EE_CInfinityDrawRectangle == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCInfinityDrawRectangle, 0
-        mov F_EE_CInfinityDrawRectangle, eax
-    .ENDIF
-    .IF F_EE_CInfinityRenderAOE == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCInfinityRenderAOE, 0
-        mov F_EE_CInfinityRenderAOE, eax
-    .ENDIF
-    ; CInfGame
-    .IF F_EE_CInfGameAddCTA == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCInfGameAddCTA, 0
-        mov F_EE_CInfGameAddCTA, eax
-    .ENDIF
-    .IF F_EE_CInfGameAddCTF == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCInfGameAddCTF, 0
-        mov F_EE_CInfGameAddCTF, eax
-    .ENDIF
-    .IF F_EE_CInfGameGetCharacterId == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCInfGameGetCharacterId, 0
-        mov F_EE_CInfGameGetCharacterId, eax
-    .ENDIF
-    ; CObList
-    .IF F_EE_CObListRemoveAll == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCObListRemoveAll, 0
-        mov F_EE_CObListRemoveAll, eax
-    .ENDIF
-    .IF F_EE_CObListRemoveHead == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCObListRemoveHead, 0
-        mov F_EE_CObListRemoveHead, eax
-    .ENDIF
-    ; CResRef
-    .IF F_EE_CResRefGetResRefStr == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCResRefGetResRefStr, 0
-        mov F_EE_CResRefGetResRefStr, eax
-    .ENDIF
-    .IF F_EE_CResRefIsValid == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCResRefIsValid, 0
-        mov F_EE_CResRefIsValid, eax
-    .ENDIF
-    .IF F_EE_CResRefCResRef == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCResRefCResRef, 0
-        mov F_EE_CResRefCResRef, eax
-    .ENDIF
-    .IF F_EE_CResRefOpEqu == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szIniCResRefOpEqu, 0
-        mov F_EE_CResRefOpEqu, eax
-    .ENDIF
-    .IF F_EE_CResRefOpNotEqu == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szIniCResRefOpNotEqu, 0
-        mov F_EE_CResRefOpNotEqu, eax
-    .ENDIF
-    ; CString
-    .IF F_EE_CStringOpPlus == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szIniCStringOpPlus, 0
-        mov F_EE_CStringOpPlus, eax
-    .ENDIF
-    .IF F_EE_CStringCString == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCStringCString, 0
-        mov F_EE_CStringCString, eax
-    .ENDIF
-    .IF F_EE_CStringFindIndex == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCStringFindIndex, 0
-        mov F_EE_CStringFindIndex, eax
-    .ENDIF
-    ; CInfButtonArray
-    .IF F_EE_CInfButtonArraySetState == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCInfButtonArraySetState, 0
-        mov F_EE_CInfButtonArraySetState, eax
-    .ENDIF
-    .IF F_EE_CInfButtonArrayUpdateButtons == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCInfButtonArrayUpdateButtons, 0
-        mov F_EE_CInfButtonArrayUpdateButtons, eax
-    .ENDIF
-    .IF F_EE_CInfButtonArraySTT == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCInfButtonArraySTT, 0
-        mov F_EE_CInfButtonArraySTT, eax
-    .ENDIF
-    ; CGameEffect
-    .IF F_EE_CGameEffectCGameEffect == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCGameEffectCGameEffect, 0
-        mov F_EE_CGameEffectCGameEffect, eax
-    .ENDIF
-    .IF F_EE_CGameEffectCopyFromBase == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCGameEffectCopyFromBase, 0
-        mov F_EE_CGameEffectCopyFromBase, eax
-    .ENDIF
-    .IF F_EE_CGameEffectGetItemEffect == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCGameEffectGetItemEffect, 0
-        mov F_EE_CGameEffectGetItemEffect, eax
-    .ENDIF
-    ; Misc
-    .IF F_EE_CGameObjectArrayGetDeny == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCGameObjectArrayGetDeny, 0
-        mov F_EE_CGameObjectArrayGetDeny, eax
-    .ENDIF
-    .IF F_EE_CGameEffectFireSpell == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCGameEffectFireSpell, 0
-        mov F_EE_CGameEffectFireSpell, eax
-    .ENDIF
-    .IF F_EE_CGameAIBaseFireSpellPoint == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCGameAIBaseFireSpellPoint, 0
-        mov F_EE_CGameAIBaseFireSpellPoint, eax
-    .ENDIF
-    .IF F_EE_dimmGetResObject == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szdimmGetResObject, 0
-        mov F_EE_dimmGetResObject, eax
-    .ENDIF
-    .IF F_EE_CAIActionDecode == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCAIActionDecode, 0
-        mov F_EE_CAIActionDecode, eax
-    .ENDIF
-    .IF F_EE_CGameObjectArrayGetDeny == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCGameObjectArrayGetDeny, 0
-        mov F_EE_CGameObjectArrayGetDeny, eax
-    .ENDIF
-    .IF F_EE_CListRemoveAt == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCListRemoveAt, 0
-        mov F_EE_CListRemoveAt, eax
-    .ENDIF
-    .IF F_EE_CRuleTablesMapCSTS == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCRuleTablesMapCSTS, 0
-        mov F_EE_CRuleTablesMapCSTS, eax
-    .ENDIF
-    .IF F_EE_operator_new == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szoperator_new, 0
-        mov F_EE_operator_new, eax
-    .ENDIF
-    .IF F_EE_CAIScriptCAIScript == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szCAIScriptCAIScript, 0
-        mov F_EE_CAIScriptCAIScript, eax
-    .ENDIF
-    ; Other functions
-    .IF F__ftol2_sse == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr sz_ftol2_sse, 0
-        mov F__ftol2_sse, eax
-    .ENDIF
-    .IF F__mbscmp == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr sz_mbscmp, 0
-        mov F__mbscmp, eax
-    .ENDIF
-    .IF F_p_malloc == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr szp_malloc, 0
-        mov F_p_malloc, eax
-    .ENDIF
-
-    ;--------------------------------------------------------------------------
-    ; Read in FALLBACK pattern addresses of game globals if present in ini file
-    ;--------------------------------------------------------------------------
-    .IF pp_pChitin == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr sz_pp_pChitin, 0
-        mov pp_pChitin, eax
-    .ENDIF
-    .IF pp_pBaldurChitin == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr sz_pp_pBaldurChitin, 0
-        mov pp_pBaldurChitin, eax
-    .ENDIF
-    .IF pp_backgroundMenu == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr sz_pp_backgroundMenu, 0
-        mov pp_backgroundMenu, eax
-    .ENDIF
-    .IF pp_overlayMenu == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr sz_pp_overlayMenu, 0
-        mov pp_overlayMenu, eax
-    .ENDIF
-    .IF pp_timer_ups == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr sz_pp_timer_ups, 0
-        mov pp_timer_ups, eax
-    .ENDIF
-    .IF pp_aB_1 == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr sz_pp_aB_1, 0
-        mov pp_aB_1, eax
-    .ENDIF
-    .IF pp_CGameSprite_vftable == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr sz_pp_CGameSprite_vftable, 0
-        mov pp_CGameSprite_vftable, eax
-    .ENDIF
-    .IF pp_CAIObjectTypeANYONE == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr sz_pp_CAIObjectTypeANYONE, 0
-        mov pp_CAIObjectTypeANYONE, eax
-    .ENDIF
-    .IF pp_VersionString_Push == 0
-        Invoke IniReadValue, Addr szIniEEexFallback, Addr sz_pp_VersionString_Push, 0
-        mov pp_VersionString_Push, eax
-    .ENDIF
-
-
-    ; Todo: Add option to return TRUE to continue regardless of missing functions? prob not safe to do so
-
-    ;--------------------------------------------------------------------------
-    ; After all that we check if any are still 0 if so we return FALSE
-    ;--------------------------------------------------------------------------    
-    .IF gEEexLua == FALSE
-        ; Check FALLBACK pattern addresses of Lua functions are not null
-        .IF F_Lua_createtable == 0
-            mov eax, FALSE
-            ret
-        .ENDIF
-        .IF F_Lua_getglobal == 0
-            mov eax, FALSE
-            ret
-        .ENDIF
-        .IF F_Lua_gettop == 0
-            mov eax, FALSE
-            ret
-        .ENDIF
-        .IF F_Lua_pcallk == 0
-            mov eax, FALSE
-            ret
-        .ENDIF
-        .IF F_Lua_pushcclosure == 0
-            mov eax, FALSE
-            ret
-        .ENDIF
-        .IF F_Lua_pushlightuserdata == 0
-            mov eax, FALSE
-            ret
-        .ENDIF
-        .IF F_Lua_pushlstring == 0
-            mov eax, FALSE
-            ret
-        .ENDIF
-        .IF F_Lua_pushnumber == 0
-            mov eax, FALSE
-            ret
-        .ENDIF
-        .IF F_Lua_pushstring == 0
-            mov eax, FALSE
-            ret
-        .ENDIF
-        .IF F_Lua_rawgeti == 0
-            mov eax, FALSE
-            ret
-        .ENDIF
-        .IF F_Lua_rawlen == 0
-            mov eax, FALSE
-            ret
-        .ENDIF
-        .IF F_Lua_setfield == 0
-            mov eax, FALSE
-            ret
-        .ENDIF
-        .IF F_Lua_setglobal == 0
-            mov eax, FALSE
-            ret
-        .ENDIF
-        .IF F_Lua_settable == 0
-            mov eax, FALSE
-            ret
-        .ENDIF
-        .IF F_Lua_settop == 0
-            mov eax, FALSE
-            ret
-        .ENDIF
-        .IF F_Lua_toboolean == 0
-            mov eax, FALSE
-            ret
-        .ENDIF
-        .IF F_Lua_tolstring == 0
-            mov eax, FALSE
-            ret
-        .ENDIF
-        .IF F_Lua_tonumberx == 0
-            mov eax, FALSE
-            ret
-        .ENDIF
-        .IF F_Lua_touserdata == 0
-            mov eax, FALSE
-            ret
-        .ENDIF
-        .IF F_Lua_type == 0
-            mov eax, FALSE
-            ret
-        .ENDIF
-        .IF F_Lua_typename == 0
-            mov eax, FALSE
-            ret
-        .ENDIF
-        .IF F_LuaL_loadstring == 0
-            mov eax, FALSE
-            ret
-        .ENDIF
-    .ENDIF
-
-    ; Check FALLBACK pattern addresses of game functions are not null
-
-    ; CAIObjectType
-    .IF F_EE_CAIObjectTypeDecode == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CAIObjectTypeRead == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CAIObjectTypeSet == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CAIObjectTypeSSC == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CAIObjectTypeOpEqu == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    ; CDerivedStats
-    .IF F_EE_CDerivedStatsGetAtOffset == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CDerivedStatsGetLevel == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CDerivedStatsSetLevel == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CDerivedStatsGetSpellState == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CDerivedStatsSetSpellState == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CDerivedStatsGetWarriorLevel == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CDerivedStatsReload == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    ; CGameSprite
-    .IF F_EE_CGameSpriteCGameSprite == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CGameSpriteAddKnownSpell == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CGameSpriteAddKnownSpellMage == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CGameSpriteAddKnownSpellPriest == 0
-        mov eax, FALSE
+    mov ebx, lpszPatternName
+    mov eax, [ebx]
+    .IF eax != 'aul_' ; _lua
+        xor eax, eax
         ret
     .ENDIF
-    .IF F_EE_CGameSpriteAddNewSA == 0
-        mov eax, FALSE
+    
+    Invoke lstrcmp, lpszPatternName, Addr szLua_createtable ; CTEXT("_lua_createtable")
+    .IF eax == 0 ; match
+        lea eax, lua_createtable
+        mov F_Lua_createtable, eax
         ret
     .ENDIF
-    .IF F_EE_CGameSpriteGetActiveStats == 0
-        mov eax, FALSE
+    Invoke lstrcmp, lpszPatternName, Addr szLua_pushcclosure ; CTEXT("_lua_pushcclosure")
+    .IF eax == 0 ; match
+        lea eax, lua_pushcclosure
+        mov F_Lua_pushcclosure, eax
         ret
     .ENDIF
-    .IF F_EE_CGameSpriteGetActiveProficiency == 0
-        mov eax, FALSE
+    Invoke lstrcmp, lpszPatternName, Addr szLua_pushnumber ; CTEXT("_lua_pushnumber")
+    .IF eax == 0 ; match
+        lea eax, lua_pushnumber
+        mov F_Lua_pushnumber, eax
         ret
-    .ENDIF
-    .IF F_EE_CGameSpriteGetKit == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CGameSpriteGetName == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CGameSpriteGetQuickButtons == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CGameSpriteMemorizeSpell == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CGameSpriteMemorizeSpellMage == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CGameSpriteMemorizeSpellPriest == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CGameSpriteMemorizeSpellInnate == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CGameSpriteReadySpell == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CGameSpriteRemoveKnownSpell == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CGameSpriteRemoveKnownSpellMage == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CGameSpriteRemoveKnownSpellPriest == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CGameSpriteRemoveKnownSpellInnate == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CGameSpriteRemoveNewSA == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CGameSpriteRenderHealthBar == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CGameSpriteSetCTT == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CGameSpriteSetColor == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CGameSpriteShatter == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CGameSpriteUnmemorizeSpellMage == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CGameSpriteUnmemorizeSpellPriest == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CGameSpriteUnmemorizeSpellInnate == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    ; CInfinity
-    .IF F_EE_CInfinityDrawLine == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CInfinityDrawRectangle == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CInfinityRenderAOE == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    ; CInfGame
-    .IF F_EE_CInfGameAddCTA == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CInfGameAddCTF == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CInfGameGetCharacterId == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    ; CObList
-    .IF F_EE_CObListRemoveAll == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CObListRemoveHead == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    ; CResRef
-    .IF F_EE_CResRefGetResRefStr == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CResRefIsValid == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CResRefCResRef == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CResRefOpEqu == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CResRefOpNotEqu == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    ; CString
-    .IF F_EE_CStringOpPlus == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CStringCString == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CStringFindIndex == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    ; CInfButtonArray
-    .IF F_EE_CInfButtonArraySetState == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CInfButtonArrayUpdateButtons == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CInfButtonArraySTT == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    ; CGameEffect
-    .IF F_EE_CGameEffectCGameEffect == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CGameEffectCopyFromBase == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CGameEffectGetItemEffect == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    ; Misc
-    .IF F_EE_CGameObjectArrayGetDeny == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CGameEffectFireSpell == 0
-        mov eax, FALSE
+    .ENDIF                
+    Invoke lstrcmp, lpszPatternName, Addr szLua_pushstring ; CTEXT("_lua_pushstring")
+    .IF eax == 0 ; match
+        lea eax, lua_pushstring
+        mov F_Lua_pushstring, eax
         ret
-    .ENDIF
-    .IF F_EE_CGameAIBaseFireSpellPoint == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_dimmGetResObject == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CAIActionDecode == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CGameObjectArrayGetDeny == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CListRemoveAt == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CRuleTablesMapCSTS == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_operator_new == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_EE_CAIScriptCAIScript == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    ; Other functions
-    .IF F__ftol2_sse == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F__mbscmp == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF F_p_malloc == 0
-        mov eax, FALSE
+    .ENDIF                
+    Invoke lstrcmp, lpszPatternName, Addr szLua_rawlen ; CTEXT("_lua_rawlen")
+    .IF eax == 0 ; match
+        lea eax, lua_rawlen
+        mov F_Lua_rawlen, eax
         ret
     .ENDIF
-
-    ; Check FALLBACK pattern addresses of game globals are not null
-    .IF pp_pChitin == 0
-        mov eax, FALSE
+    Invoke lstrcmp, lpszPatternName, Addr szLua_rawgeti ; CTEXT("_lua_rawgeti")
+    .IF eax == 0 ; match
+        lea eax, lua_rawgeti
+        mov F_Lua_rawgeti, eax
         ret
     .ENDIF
-    .IF pp_pBaldurChitin == 0
-        mov eax, FALSE
+    Invoke lstrcmp, lpszPatternName, Addr szLua_setglobal ; CTEXT("_lua_setglobal")
+    .IF eax == 0 ; match
+        lea eax, lua_setglobalx
+        mov F_Lua_setglobal, eax
         ret
     .ENDIF
-    .IF pp_backgroundMenu == 0
-        mov eax, FALSE
+    Invoke lstrcmp, lpszPatternName, Addr szLua_settable ; CTEXT("_lua_settable")
+    .IF eax == 0 ; match
+        lea eax, lua_settable
+        mov F_Lua_settable, eax
         ret
     .ENDIF
-    .IF pp_overlayMenu == 0
-        mov eax, FALSE
+    Invoke lstrcmp, lpszPatternName, Addr szLua_tolstring ; CTEXT("_lua_tolstring")
+    .IF eax == 0 ; match
+        lea eax, lua_tolstring
+        mov F_Lua_tolstring, eax
         ret
-    .ENDIF
-    .IF pp_timer_ups == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF pp_aB_1 == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF pp_CGameSprite_vftable == 0
-        mov eax, FALSE
-        ret
-    .ENDIF
-    .IF pp_CAIObjectTypeANYONE == 0
-        mov eax, FALSE
+    .ENDIF                
+    Invoke lstrcmp, lpszPatternName, Addr szLua_tonumberx ; CTEXT("_lua_tonumberx")
+    .IF eax == 0 ; match
+        lea eax, lua_tonumberx
+        mov F_Lua_tonumberx, eax
         ret
     .ENDIF
-    .IF pp_VersionString_Push == 0
-        mov eax, FALSE
-        ret
-    .ENDIF    
-
-
-
-    mov eax, TRUE
+    ENDIF
+    
+    xor eax, eax ; else
     ret
-EEexFallbackAddresses ENDP
+EEexIsStaticLua ENDP
+
+
+EEEX_ALIGN
+;------------------------------------------------------------------------------
+; EEexFunctionAddresses - Get lua function addresses - used internally
+; Looks for __ftol2_sse, lua_createtable, luaL_loadstring, lua_pushcclosure,
+; lua_setglobal, lua_pushnumber, lua_tonumberx, lua_tolstring, lua_rawlen, 
+; lua_rawgeti, lua_pushstring, lua_settable
+; Returns: None 
+;------------------------------------------------------------------------------
+EEexFunctionAddresses PROC
+    LOCAL nPattern:DWORD
+    LOCAL ptrCurrentPattern:DWORD
+    LOCAL lpszPatternName:DWORD
+    LOCAL dwPatternAddress:DWORD
+
+    IFDEF DEBUG32
+    PrintText 'EEexFunctionAddresses'
+    ENDIF  
+
+;    IFDEF EEEX_LUALIB ; then gEEexLuaLibDefined == TRUE
+;    .IF gEEexLua == TRUE
+;        ; set function pointers to internal static lua library functions
+;        lea eax, lua_createtable
+;        mov F_Lua_createtable, eax
+;        lea eax, lua_getglobal
+;        mov F_Lua_getglobal, eax
+;        lea eax, lua_gettop
+;        mov F_Lua_gettop, eax
+;        lea eax, lua_pcallk
+;        mov F_Lua_pcallk, eax
+;        lea eax, lua_pushcclosure
+;        mov F_Lua_pushcclosure, eax
+;        lea eax, lua_pushlightuserdata
+;        mov F_Lua_pushlightuserdata, eax
+;        lea eax, lua_pushlstring
+;        mov F_Lua_pushlstring, eax
+;        lea eax, lua_pushnumber
+;        mov F_Lua_pushnumber, eax
+;        lea eax, lua_pushstring
+;        mov F_Lua_pushstring, eax
+;        lea eax, lua_rawgeti
+;        mov F_Lua_rawgeti, eax
+;        lea eax, lua_rawlen
+;        mov F_Lua_rawlen, eax
+;        lea eax, lua_setfield
+;        mov F_Lua_setfield, eax
+;        lea eax, lua_settable
+;        mov F_Lua_settable, eax
+;        lea eax, lua_settop
+;        mov F_Lua_settop, eax
+;        lea eax, lua_toboolean
+;        mov F_Lua_toboolean, eax
+;        lea eax, lua_tolstring
+;        mov F_Lua_tolstring, eax
+;        lea eax, lua_tonumberx
+;        mov F_Lua_tonumberx, eax
+;        lea eax, lua_touserdata
+;        mov F_Lua_touserdata, eax
+;        lea eax, lua_type
+;        mov F_Lua_type, eax
+;        lea eax, lua_typename
+;        mov F_Lua_typename, eax
+;        ; internal lua_setglobalx coz static version crashes
+;        lea eax, lua_setglobalx
+;        mov F_Lua_setglobal, eax
+;    .ENDIF
+;    ENDIF
+
+    mov ebx, PatternsDatabase
+    mov ptrCurrentPattern, ebx
+    mov nPattern, 0
+    mov eax, 0
+    .WHILE eax < TotalPatterns
+        .IF [ebx].PATTERN.bFound == TRUE
+            mov eax, [ebx].PATTERN.PatAddress
+            mov dwPatternAddress, eax
+            mov eax, [ebx].PATTERN.PatName
+            mov lpszPatternName, eax
+            .IF gEEexLua == FALSE || gEEexLuaLibDefined == FALSE
+                mov ebx, lpszPatternName
+                mov eax, [ebx]
+                .IF eax == 'aul_' ; _lua
+                    Invoke lstrcmp, lpszPatternName, Addr szLua_createtable ; CTEXT("_lua_createtable")
+                    .IF eax == 0 ; match
+                        mov eax, dwPatternAddress
+                        mov F_Lua_createtable, eax
+                        jmp getnextpattern
+                    .ENDIF
+                    Invoke lstrcmp, lpszPatternName, Addr szLua_pushcclosure ; CTEXT("_lua_pushcclosure")
+                    .IF eax == 0 ; match
+                        mov eax, dwPatternAddress
+                        mov F_Lua_pushcclosure, eax
+                        jmp getnextpattern
+                    .ENDIF
+                    Invoke lstrcmp, lpszPatternName, Addr szLua_pushnumber ; CTEXT("_lua_pushnumber")
+                    .IF eax == 0 ; match
+                        mov eax, dwPatternAddress
+                        mov F_Lua_pushnumber, eax
+                        jmp getnextpattern
+                    .ENDIF                
+                    Invoke lstrcmp, lpszPatternName, Addr szLua_pushstring ; CTEXT("_lua_pushstring")
+                    .IF eax == 0 ; match
+                        mov eax, dwPatternAddress
+                        mov F_Lua_pushstring, eax
+                        jmp getnextpattern
+                    .ENDIF                
+                    Invoke lstrcmp, lpszPatternName, Addr szLua_rawlen ; CTEXT("_lua_rawlen")
+                    .IF eax == 0 ; match
+                        mov eax, dwPatternAddress
+                        mov F_Lua_rawlen, eax
+                        jmp getnextpattern
+                    .ENDIF
+                    Invoke lstrcmp, lpszPatternName, Addr szLua_rawgeti ; CTEXT("_lua_rawgeti")
+                    .IF eax == 0 ; match
+                        mov eax, dwPatternAddress
+                        mov F_Lua_rawgeti, eax
+                        jmp getnextpattern
+                    .ENDIF
+                    Invoke lstrcmp, lpszPatternName, Addr szLua_setglobal ; CTEXT("_lua_setglobal")
+                    .IF eax == 0 ; match
+                        mov eax, dwPatternAddress
+                        mov F_Lua_setglobal, eax
+                        jmp getnextpattern
+                    .ENDIF
+                    Invoke lstrcmp, lpszPatternName, Addr szLua_settable ; CTEXT("_lua_settable")
+                    .IF eax == 0 ; match
+                        mov eax, dwPatternAddress
+                        mov F_Lua_settable, eax
+                        jmp getnextpattern
+                    .ENDIF
+                    Invoke lstrcmp, lpszPatternName, Addr szLua_tolstring ; CTEXT("_lua_tolstring")
+                    .IF eax == 0 ; match
+                        mov eax, dwPatternAddress
+                        mov F_Lua_tolstring, eax
+                        jmp getnextpattern
+                    .ENDIF                
+                    Invoke lstrcmp, lpszPatternName, Addr szLua_tonumberx ; CTEXT("_lua_tonumberx")
+                    .IF eax == 0 ; match
+                        mov eax, dwPatternAddress
+                        mov F_Lua_tonumberx, eax
+                        jmp getnextpattern
+                    .ENDIF
+                .ENDIF
+            .ENDIF
+            
+            mov ebx, lpszPatternName
+            mov eax, [ebx]
+            .IF eax == 'aul_' || eax == 'tf__'  ; _lua  || __ft            
+                ; have to get this _luaL_loadstring from game regardless of static libs being used
+                Invoke lstrcmp, lpszPatternName, Addr szLuaL_loadstring ; CTEXT("_luaL_loadstring")
+                .IF eax == 0 ; match
+                    mov eax, dwPatternAddress
+                    mov F_LuaL_loadstring, eax
+                    jmp getnextpattern
+                .ENDIF
+                ; have to always get this
+                Invoke lstrcmp, lpszPatternName, Addr sz_ftol2_sse ; CTEXT("__ftol2_sse")
+                .IF eax == 0 ; match
+                    mov eax, dwPatternAddress
+                    mov F__ftol2_sse, eax
+                .ENDIF              
+            .ENDIF
+            
+        .ENDIF
+
+getnextpattern:
+        add ptrCurrentPattern, SIZEOF PATTERN
+        mov ebx, ptrCurrentPattern
+        inc nPattern
+        mov eax, nPattern
+    .ENDW
+    
+    IFDEF DEBUG32
+    PrintDec F_Lua_createtable
+    PrintDec F_Lua_pushcclosure
+    PrintDec F_Lua_pushnumber
+    PrintDec F_Lua_pushstring
+    PrintDec F_Lua_rawlen
+    PrintDec F_Lua_rawgeti
+    PrintDec F_Lua_setglobal
+    PrintDec F_Lua_settable
+    PrintDec F_Lua_tolstring
+    PrintDec F_Lua_tonumberx
+    PrintDec F_LuaL_loadstring
+    PrintDec F__ftol2_sse
+    ENDIF
+    
+    
+    xor eax, eax
+    ret
+EEexFunctionAddresses ENDP
 
 
 EEEX_ALIGN
@@ -1888,6 +1313,10 @@ EEEX_ALIGN
 EEexApplyCallPatch PROC USES EBX ESI dwAddressToPatch:DWORD
     LOCAL dwDistance:DWORD
     LOCAL dwOldProtect:DWORD
+
+    IFDEF DEBUG32
+    PrintText 'EEexApplyCallPatch'
+    ENDIF  
 
     .IF dwAddressToPatch == 0
         mov eax, FALSE
@@ -1932,88 +1361,56 @@ EEexApplyCallPatch ENDP
 EEEX_ALIGN
 ;------------------------------------------------------------------------------
 ; Process game global variables - obtain pointers to the game globals from
-; pattern addresses verified or searched for.
+; pattern addresses verified or searched for. Only need g_lua really 
 ; Returns: none
 ;------------------------------------------------------------------------------
 EEexGameGlobals PROC USES EBX
+    LOCAL nPattern:DWORD
+    LOCAL ptrCurrentPattern:DWORD
+    LOCAL lpszPatternName:DWORD
+    LOCAL dwPatternAddress:DWORD
 
-    ; handle type 1 patterns:
-    mov ebx, PatchLocation
-    sub ebx, 4d
-    mov pp_lua, eax
-    mov eax, [ebx] ; address of g_lua
-    mov p_lua, eax
-    .IF pp_pChitin != 0
-        mov ebx, pp_pChitin
-        mov p_pChitin, ebx
-        mov eax, [ebx]
-        mov g_pChitin, eax
-    .ENDIF
-    .IF pp_pBaldurChitin != 0
-        mov ebx, pp_pBaldurChitin
-        mov p_pBaldurChitin, ebx
-        mov eax, [ebx]
-        mov g_pBaldurChitin, eax
-    .ENDIF
-    .IF pp_backgroundMenu != 0
-        mov ebx, pp_backgroundMenu
-        mov p_backgroundMenu, ebx
-        mov eax, [ebx]
-        mov g_backgroundMenu, eax
-    .ENDIF
-    .IF pp_overlayMenu != 0
-        mov ebx, pp_overlayMenu
-        mov p_overlayMenu, ebx
-        mov eax, [ebx]
-        mov g_overlayMenu, eax
-    .ENDIF
-    .IF pp_timer_ups != 0
-        mov ebx, pp_timer_ups
-        mov p_timer_ups, ebx
-        mov eax, [ebx]
-        mov timer_ups, eax
-    .ENDIF
-    .IF pp_aB_1 != 0
-        mov ebx, pp_aB_1
-        mov p_aB_1, ebx
-        mov eax, [ebx]
-        mov aB_1, eax
-    .ENDIF
-    .IF pp_CGameSprite_vftable != 0
-        mov ebx, pp_CGameSprite_vftable
-        mov p_CGameSprite_vftable, ebx
-        mov eax, [ebx]
-        mov CGameSprite_vftable, eax
-    .ENDIF
-    .IF pp_CAIObjectTypeANYONE != 0
-        mov ebx, pp_CAIObjectTypeANYONE
-        mov p_CAIObjectTypeANYONE, ebx
-        mov eax, [ebx]
-        mov CAIObjectTypeANYONE, eax
-    .ENDIF
-    .IF pp_VersionString_Push != 0
-        mov ebx, pp_VersionString_Push
-        mov p_VersionString_Push, ebx
-        mov eax, [ebx]
-        mov VersionString_Push, eax    
-    .ENDIF
-    
-    
-;    ; Handle type 2 patterns: call offsets
-;    .IF pF_EE_CGameSpriteSetCTT != 0
-;        mov ebx, pF_EE_CGameSpriteSetCTT
-;        mov eax, [ebx]
-;        add ebx, 4 ; for offset part of call x instruction
-;        add ebx, eax ; add call offset to get address of function
-;        mov F_EE_CGameSpriteSetCTT, ebx
-;        IFDEF DEBUG32
-;        PrintDec F_EE_CGameSpriteSetCTT
-;        ENDIF
-;    .ELSE
-;        IFDEF DEBUG32
-;        PrintText 'pF_EE_CGameSpriteSetCTT == 0'
-;        ENDIF
-;    .ENDIF
+    IFDEF DEBUG32
+    PrintText 'EEexGameGlobals'
+    ENDIF  
+
+    mov ebx, PatternsDatabase
+    mov ptrCurrentPattern, ebx
+    mov nPattern, 0
+    mov eax, 0
+    .WHILE eax < TotalPatterns
+        .IF [ebx].PATTERN.bFound == TRUE && [ebx].PATTERN.PatType == 1
+            mov eax, [ebx].PATTERN.PatAddress
+            mov dwPatternAddress, eax
+            mov eax, [ebx].PATTERN.PatName
+            mov lpszPatternName, eax
+            
+            ; Get this one for our own internal usage
+            Invoke lstrcmp, lpszPatternName, CTEXT("_g_lua")
+            .IF eax == 0 ; match
+                mov eax, dwPatternAddress
+                .IF eax != 0
+                    mov eax, [eax]
+                    mov p_lua, eax
+                .ELSE
+                    mov p_lua, eax
+                .ENDIF
+            .ENDIF
+            
+            ; update type 1 pattern - a game global variable to point to actual content
+            mov eax, dwPatternAddress
+            .IF eax != 0
+                mov ebx, ptrCurrentPattern
+                mov eax, [eax]
+                mov [ebx].PATTERN.PatAddress, eax
+            .ENDIF
+
+        .ENDIF
+        add ptrCurrentPattern, SIZEOF PATTERN
+        mov ebx, ptrCurrentPattern
+        inc nPattern
+        mov eax, nPattern
+    .ENDW
 
     ret
 EEexGameGlobals ENDP
@@ -2027,9 +1424,9 @@ EEEX_ALIGN
 ;  INFO_ALL                EQU 0
 ;  INFO_GAME               EQU 1
 ;  INFO_DEBUG              EQU 2
-;  INFO_VERIFIED           EQU 3
-;  INFO_SEARCHED           EQU 4
-;  INFO_FALLBACK           EQU 5
+;  INFO_IMPORTED           EQU 3
+;  INFO_VERIFIED           EQU 4
+;  INFO_SEARCHED           EQU 5
 ;
 ; Calls EEexLogPatterns
 ; Returns: None
@@ -2042,6 +1439,11 @@ EEexLogInformation PROC dwType:DWORD
         xor eax, eax
         ret
     .ENDIF
+
+;    IFDEF DEBUG32
+;    PrintText 'EEexLogInformation'
+;    PrintDec dwType
+;    ENDIF  
 
     Invoke LogOpen, FALSE
     ;--------------------------------------------------------------------------
@@ -2066,6 +1468,7 @@ EEexLogInformation PROC dwType:DWORD
         Invoke LogMessageAndValue, CTEXT("Log"), gEEexLog
         Invoke LogMessageAndValue, CTEXT("Lua"), gEEexLua
         Invoke LogMessageAndValue, CTEXT("Hex"), gEEexHex
+        Invoke LogMessageAndValue, CTEXT("Msg"), gEEexMsg
         Invoke LogMessage, 0, LOG_CRLF, 0
     .ENDIF
 
@@ -2085,6 +1488,44 @@ EEexLogInformation PROC dwType:DWORD
         Invoke LogMessageAndHexValue, CTEXT(".text address"), EEGameSectionTEXTPtr
         Invoke LogMessageAndHexValue, CTEXT(".text size"), EEGameSectionTEXTSize
         Invoke LogMessage, 0, LOG_CRLF, 0
+    .ENDIF
+
+    ;--------------------------------------------------------------------------
+    ; Log patterns that we were not imported
+    ;--------------------------------------------------------------------------
+    .IF dwType == INFO_IMPORTED
+        .IF gEEexLog > LOGLEVEL_NONE
+            Invoke LogMessage, CTEXT("Patterns Imported:"), LOG_INFO, 0
+            ; x patterns imported out of x patterns
+            Invoke EEexDwordToAscii, ImportedPatterns, Addr szImportedNo
+            Invoke lstrcpy, Addr szPatternMessageBuffer, Addr szImportedNo
+            Invoke lstrcat, Addr szPatternMessageBuffer, Addr szImported
+            Invoke lstrcat, Addr szPatternMessageBuffer, Addr szPatternsOutOf
+            Invoke EEexDwordToAscii, TotalPatterns, Addr szTotalPatternNo
+            Invoke lstrcat, Addr szPatternMessageBuffer, Addr szTotalPatternNo
+            Invoke lstrcat, Addr szPatternMessageBuffer, Addr szPatterns
+            Invoke lstrcat, Addr szPatternMessageBuffer, Addr szLog_CRLF
+            ; x patterns not imported
+            Invoke EEexDwordToAscii, NotImportedPatterns, Addr szNotImportedNo
+            Invoke lstrcat, Addr szPatternMessageBuffer, Addr szNotImportedNo
+            Invoke lstrcat, Addr szPatternMessageBuffer, Addr szNotImported
+            Invoke lstrcat, Addr szPatternMessageBuffer, Addr szLog_CRLF
+            ; x patterns skipped
+            .IF SkippedImportedPatterns > 0
+                Invoke EEexDwordToAscii, SkippedImportedPatterns, Addr szSkippedNo
+                Invoke lstrcat, Addr szPatternMessageBuffer, Addr szSkippedNo
+                Invoke lstrcat, Addr szPatternMessageBuffer, Addr szSkipped
+                Invoke lstrcat, Addr szPatternMessageBuffer, Addr szLog_CRLF
+            .ENDIF
+            Invoke LogMessage, Addr szPatternMessageBuffer, LOG_STANDARD, 0    
+        .ENDIF
+        .IF gEEexLog >= LOGLEVEL_DETAIL        
+            .IF NotImportedPatterns > 0 || ImportedPatterns == 0
+                Invoke LogMessage, CTEXT("Patterns Not Imported:"), LOG_STANDARD, 0
+                Invoke EEexLogImportPatterns, TRUE
+                Invoke LogMessage, 0, LOG_CRLF, 0
+            .ENDIF
+        .ENDIF
     .ENDIF
 
     ;--------------------------------------------------------------------------
@@ -2119,8 +1560,8 @@ EEexLogInformation PROC dwType:DWORD
             Invoke lstrcat, Addr szPatternMessageBuffer, Addr szNotVerified
             Invoke lstrcat, Addr szPatternMessageBuffer, Addr szLog_CRLF
             ; x patterns skipped
-            .IF SkippedPatterns > 0
-                Invoke EEexDwordToAscii, SkippedPatterns, Addr szSkippedNo
+            .IF SkippedVerifyPatterns > 0
+                Invoke EEexDwordToAscii, SkippedVerifyPatterns, Addr szSkippedNo
                 Invoke lstrcat, Addr szPatternMessageBuffer, Addr szSkippedNo
                 Invoke lstrcat, Addr szPatternMessageBuffer, Addr szSkipped
                 Invoke lstrcat, Addr szPatternMessageBuffer, Addr szLog_CRLF
@@ -2133,8 +1574,8 @@ EEexLogInformation PROC dwType:DWORD
                 Invoke EEexLogPatterns, FALSE
                 Invoke LogMessage, 0, LOG_CRLF, 0
             .ENDIF
-            mov eax, VerifiedPatterns ; show list of all patterns if all verified
-            .IF eax == TotalPatterns ; coz we skip searching, otherwise none shown
+            mov eax, VerifiedPatterns ; show list of patterns if some verified
+            .IF eax != TotalPatterns && TotalPatterns != 0 ; coz we skip searching, otherwise none shown
                 Invoke LogMessage, CTEXT("Patterns Verified:"), LOG_STANDARD, 0
                 Invoke EEexLogPatterns, TRUE
                 Invoke LogMessage, 0, LOG_CRLF, 0
@@ -2145,7 +1586,7 @@ EEexLogInformation PROC dwType:DWORD
     ;--------------------------------------------------------------------------
     ; Log patterns that we searched and found (or used fallbacks for)
     ;--------------------------------------------------------------------------
-    .IF dwType == INFO_SEARCHED || dwType == INFO_FALLBACK
+    .IF dwType == INFO_SEARCHED
         .IF gEEexLog > LOGLEVEL_NONE
             Invoke LogMessage, CTEXT("Patterns Search:"), LOG_INFO, 0
             .IF NotVerifiedPatterns > 0
@@ -2169,8 +1610,8 @@ EEexLogInformation PROC dwType:DWORD
             Invoke lstrcat, Addr szPatternMessageBuffer, Addr szNotFound
             Invoke lstrcat, Addr szPatternMessageBuffer, Addr szLog_CRLF
             ; x patterns skipped
-            .IF SkippedPatterns > 0
-                Invoke EEexDwordToAscii, SkippedPatterns, Addr szSkippedNo
+            .IF SkippedFoundPatterns > 0
+                Invoke EEexDwordToAscii, SkippedFoundPatterns, Addr szSkippedNo
                 Invoke lstrcat, Addr szPatternMessageBuffer, Addr szSkippedNo
                 Invoke lstrcat, Addr szPatternMessageBuffer, Addr szSkipped
                 Invoke lstrcat, Addr szPatternMessageBuffer, Addr szLog_CRLF
@@ -2180,8 +1621,6 @@ EEexLogInformation PROC dwType:DWORD
         .IF gEEexLog >= LOGLEVEL_DETAIL
             .IF dwType == INFO_SEARCHED
                 Invoke LogMessage, CTEXT("Patterns Found:"), LOG_STANDARD, 0
-            .ELSEIF dwType == INFO_FALLBACK
-                Invoke LogMessage, CTEXT("Patterns Found + Fallbacks:"), LOG_STANDARD, 0
             .ENDIF
             Invoke EEexLogPatterns, TRUE
             Invoke LogMessage, 0, LOG_CRLF, 0
@@ -2193,9 +1632,93 @@ EEexLogInformation PROC dwType:DWORD
         .ENDIF
     .ENDIF
 
+    .IF dwType == INFO_ADDRESSES
+        .IF gEEexLog > LOGLEVEL_NONE
+            Invoke LogMessage, CTEXT("Address List:"), LOG_INFO, 0
+            Invoke EEexLogPatterns, TRUE
+            
+            ; Handle extras like GetProcAddress, LoadLibrary etc
+            Invoke LogMessage, Addr szGetProcAddress, LOG_NONEWLINE, 1
+            Invoke LogMessageAndHexValue, 0, F_GetProcAddress
+            Invoke LogMessage, Addr szLoadLibrary, LOG_NONEWLINE, 1
+            Invoke LogMessageAndHexValue, 0, F_LoadLibrary
+            Invoke LogMessage, Addr szSDL_Free, LOG_NONEWLINE, 1
+            Invoke LogMessageAndHexValue, 0, F_SDL_free
+
+            Invoke LogMessage, 0, LOG_CRLF, 0
+        .ENDIF
+    .ENDIF
+
     xor eax, eax
     ret
 EEexLogInformation ENDP
+
+
+EEEX_ALIGN
+;------------------------------------------------------------------------------
+; EEexLogImportPatterns - Log import pattern - <PatternName> and error
+; Called from EEexLogInformation
+; Returns: None
+;------------------------------------------------------------------------------
+EEexLogImportPatterns PROC bImportError:DWORD
+    LOCAL nPattern:DWORD
+    LOCAL ptrCurrentPattern:DWORD
+    LOCAL lpszPatternName:DWORD
+    LOCAL dwPatternError:DWORD
+
+    mov ebx, PatternsDatabase
+    mov ptrCurrentPattern, ebx
+    mov nPattern, 0
+    mov eax, 0
+    .WHILE eax < TotalPatterns
+        mov eax, [ebx].PATTERN.PatBytes
+        .IF bImportError == TRUE
+            .IF eax == 0
+                mov eax, TRUE
+            .ELSE
+                mov eax, FALSE
+            .ENDIF
+        .ELSE
+            .IF eax != 0
+                mov eax, TRUE
+            .ELSE
+                mov eax, FALSE
+            .ENDIF
+        .ENDIF
+        .IF eax == TRUE
+            mov eax, [ebx].PATTERN.PatName
+            mov lpszPatternName, eax
+
+            .IF bImportError == TRUE
+                ; get error no stored in PatAdj
+                mov eax, [ebx].PATTERN.PatAdj
+                mov dwPatternError, eax
+                Invoke LogMessage, lpszPatternName, LOG_NONEWLINE, 1
+                mov eax, dwPatternError
+                .IF eax == IMP_ERR_PATBYTES_EMPTY ; PatBytes entry is empty of text
+                    Invoke LogMessage, CTEXT("PatBytes entry is empty of text"), LOG_STANDARD, 1
+                .ELSEIF eax == IMP_ERR_PATBYTES_SIZE  ; PatBytes entry has text but length is not multiple of 2 (for paired hex chars)
+                    Invoke LogMessage, CTEXT("PatBytes entry has text but length is not multiple of 2 (for paired hex chars)"), LOG_STANDARD, 1
+                .ELSEIF eax == IMP_ERR_PATBYTES_ALLOC ; Could not allocate memory for PatBytes conversion to raw pattern bytes
+                    Invoke LogMessage, CTEXT("Could not allocate memory for PatBytes conversion to raw pattern bytes"), LOG_STANDARD, 1
+                .ELSEIF eax == IMP_ERR_VERBYTES_EMPTY ; VerBytes entry is empty of text (which is allowed - just providing this incase future use)
+                    Invoke LogMessage, CTEXT("VerBytes entry is empty of text (which is allowed - just providing this incase future use)"), LOG_STANDARD, 1
+                .ELSEIF eax == IMP_ERR_VERBYTES_SIZE  ; VerBytes entry has text but length is not multiple of 2 (for paired hex chars)
+                    Invoke LogMessage, CTEXT("VerBytes entry has text but length is not multiple of 2 (for paired hex chars)"), LOG_STANDARD, 1
+                .ELSEIF eax == IMP_ERR_VERBYTES_ALLOC ; Could not allocate memory for VerBytes conversion to raw pattern bytes
+                    Invoke LogMessage, CTEXT("Could not allocate memory for VerBytes conversion to raw pattern bytes"), LOG_STANDARD, 1
+                .ENDIF
+            .ELSE
+                Invoke LogMessage, lpszPatternName, LOG_STANDARD, 1
+            .ENDIF
+        .ENDIF
+        add ptrCurrentPattern, SIZEOF PATTERN
+        mov ebx, ptrCurrentPattern
+        inc nPattern
+        mov eax, nPattern
+    .ENDW
+     ret
+EEexLogImportPatterns ENDP
 
 
 EEEX_ALIGN
@@ -2209,40 +1732,24 @@ EEexLogPatterns PROC bFoundPattern:DWORD
     LOCAL ptrCurrentPattern:DWORD
     LOCAL lpszPatternName:DWORD
     LOCAL dwPatternAddress:DWORD
-    LOCAL szPatternName[32]:BYTE
-    LOCAL szPatternNo[16]:BYTE
 
-    lea ebx, Patterns
+    mov ebx, PatternsDatabase
     mov ptrCurrentPattern, ebx
     mov nPattern, 0
     mov eax, 0
     .WHILE eax < TotalPatterns
         mov eax, [ebx].PATTERN.bFound
         .IF eax == bFoundPattern
-            mov eax, [ebx].PATTERN.FuncAddress
-            .IF eax != 0
-                mov eax, [eax]
-            .ELSE
-                mov eax, 0
-            .ENDIF
+            mov eax, [ebx].PATTERN.PatAddress
             mov dwPatternAddress, eax
             mov eax, [ebx].PATTERN.PatName
-            .IF eax == 0 ; use fallback of 'PatternX' if no name found
-                Invoke EEexDwordToAscii, nPattern, Addr szPatternNo
-                Invoke lstrcpy, Addr szPatternName, Addr szPattern
-                Invoke lstrcat, Addr szPatternName, Addr szPatternNo
-                lea eax, szPatternName ;szPattern
-            .ENDIF
             mov lpszPatternName, eax
-
             .IF bFoundPattern == TRUE
                 Invoke LogMessage, lpszPatternName, LOG_NONEWLINE, 1
                 Invoke LogMessageAndHexValue, 0, dwPatternAddress
             .ELSE
                 Invoke LogMessage, lpszPatternName, LOG_STANDARD, 1
             .ENDIF
-
-            ;Invoke LogMessageAndHexValue, lpszPatternName, dwPatternAddress
         .ENDIF
         add ptrCurrentPattern, SIZEOF PATTERN
         mov ebx, ptrCurrentPattern
@@ -2452,160 +1959,29 @@ EEEX_ALIGN
 ; Returns: None
 ;------------------------------------------------------------------------------
 EEexWriteAddressesToIni PROC
+    LOCAL nPattern:DWORD
+    LOCAL ptrCurrentPattern:DWORD
+    LOCAL lpszPatternName:DWORD
+    LOCAL dwPatternAddress:DWORD
 
-    Invoke IniSetPatchLocation, PatchLocation
+    mov ebx, PatternsDatabase
+    mov ptrCurrentPattern, ebx
+    mov nPattern, 0
+    mov eax, 0
+    .WHILE eax < TotalPatterns
+        .IF [ebx].PATTERN.bFound == TRUE
+            mov eax, [ebx].PATTERN.PatAddress
+            mov dwPatternAddress, eax
+            mov eax, [ebx].PATTERN.PatName
+            mov lpszPatternName, eax
+            Invoke IniWriteValue, Addr szIniEEex, lpszPatternName, dwPatternAddress
+        .ENDIF
+        add ptrCurrentPattern, SIZEOF PATTERN
+        mov ebx, ptrCurrentPattern
+        inc nPattern
+        mov eax, nPattern
+    .ENDW
 
-    .IF gEEexLua == TRUE && gEEexLuaLibDefined == TRUE
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_createtable, 0
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_getglobal, 0
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_gettop, 0
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_pcallk, 0
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_pushcclosure, 0
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_pushlightuserdata, 0
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_pushlstring, 0
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_pushnumber, 0
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_pushstring, 0
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_rawgeti, 0
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_rawlen, 0
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_setfield, 0
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_setglobal, 0
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_settable, 0
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_settop, 0
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_toboolean, 0
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_tolstring, 0
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_tonumberx, 0
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_touserdata, 0
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_type, 0
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_typename, 0
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLuaL_loadstring, 0
-    .ELSE ; gEEexLua == FALSE
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_createtable, F_Lua_createtable
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_getglobal, F_Lua_getglobal
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_gettop, F_Lua_gettop
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_pcallk, F_Lua_pcallk
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_pushcclosure, F_Lua_pushcclosure
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_pushlightuserdata, F_Lua_pushlightuserdata
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_pushlstring, F_Lua_pushlstring
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_pushnumber, F_Lua_pushnumber
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_pushstring, F_Lua_pushstring
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_rawgeti, F_Lua_rawgeti
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_rawlen, F_Lua_rawlen
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_setfield, F_Lua_setfield
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_setglobal, F_Lua_setglobal
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_settable, F_Lua_settable
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_settop, F_Lua_settop
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_toboolean, F_Lua_toboolean
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_tolstring, F_Lua_tolstring
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_tonumberx, F_Lua_tonumberx
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_touserdata, F_Lua_touserdata
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_type, F_Lua_type
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLua_typename, F_Lua_typename
-        Invoke IniWriteValue, Addr szIniEEex, Addr szLuaL_loadstring, F_LuaL_loadstring
-    .ENDIF
-
-
-    ;--------------------------------------------------------------------------
-    ; Write out pattern addresses of game functions to ini file
-    ;--------------------------------------------------------------------------
-    ; CAIObjectType
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCAIObjectTypeDecode, F_EE_CAIObjectTypeDecode
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCAIObjectTypeRead, F_EE_CAIObjectTypeRead
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCAIObjectTypeSet, F_EE_CAIObjectTypeSet
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCAIObjectTypeSSC, F_EE_CAIObjectTypeSSC
-    Invoke IniWriteValue, Addr szIniEEex, Addr szIniCAIObjectTypeOpEqu, F_EE_CAIObjectTypeOpEqu
-    ; CDerivedStats
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCDerivedStatsGetAtOffset, F_EE_CDerivedStatsGetAtOffset
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCDerivedStatsGetLevel, F_EE_CDerivedStatsGetLevel
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCDerivedStatsSetLevel, F_EE_CDerivedStatsSetLevel
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCDerivedStatsGetSpellState, F_EE_CDerivedStatsGetSpellState
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCDerivedStatsSetSpellState, F_EE_CDerivedStatsSetSpellState
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCDerivedStatsGetWarriorLevel, F_EE_CDerivedStatsGetWarriorLevel
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCDerivedStatsReload, F_EE_CDerivedStatsReload
-    ; CGameSprite
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCGameSpriteCGameSprite, F_EE_CGameSpriteCGameSprite
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCGameSpriteAddKnownSpell, F_EE_CGameSpriteAddKnownSpell
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCGameSpriteAddKnownSpellMage, F_EE_CGameSpriteAddKnownSpellMage
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCGameSpriteAddKnownSpellPriest, F_EE_CGameSpriteAddKnownSpellPriest
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCGameSpriteAddNewSA, F_EE_CGameSpriteAddNewSA
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCGameSpriteGetActiveStats, F_EE_CGameSpriteGetActiveStats
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCGameSpriteGetActiveProficiency, F_EE_CGameSpriteGetActiveProficiency
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCGameSpriteGetKit, F_EE_CGameSpriteGetKit
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCGameSpriteGetName, F_EE_CGameSpriteGetName
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCGameSpriteGetQuickButtons, F_EE_CGameSpriteGetQuickButtons
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCGameSpriteMemorizeSpell, F_EE_CGameSpriteMemorizeSpell
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCGameSpriteMemorizeSpellMage, F_EE_CGameSpriteMemorizeSpellMage
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCGameSpriteMemorizeSpellPriest, F_EE_CGameSpriteMemorizeSpellPriest
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCGameSpriteMemorizeSpellInnate, F_EE_CGameSpriteMemorizeSpellInnate
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCGameSpriteReadySpell, F_EE_CGameSpriteReadySpell
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCGameSpriteRemoveKnownSpell, F_EE_CGameSpriteRemoveKnownSpell
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCGameSpriteRemoveKnownSpellMage, F_EE_CGameSpriteRemoveKnownSpellMage
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCGameSpriteRemoveKnownSpellPriest, F_EE_CGameSpriteRemoveKnownSpellPriest
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCGameSpriteRemoveKnownSpellInnate, F_EE_CGameSpriteRemoveKnownSpellInnate
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCGameSpriteRemoveNewSA, F_EE_CGameSpriteRemoveNewSA
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCGameSpriteRenderHealthBar, F_EE_CGameSpriteRenderHealthBar
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCGameSpriteSetCTT, F_EE_CGameSpriteSetCTT
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCGameSpriteSetColor, F_EE_CGameSpriteSetColor
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCGameSpriteShatter, F_EE_CGameSpriteShatter
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCGameSpriteUnmemorizeSpellMage, F_EE_CGameSpriteUnmemorizeSpellMage
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCGameSpriteUnmemorizeSpellPriest, F_EE_CGameSpriteUnmemorizeSpellPriest
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCGameSpriteUnmemorizeSpellInnate, F_EE_CGameSpriteUnmemorizeSpellInnate
-    ; CInfinity
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCInfinityDrawLine, F_EE_CInfinityDrawLine
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCInfinityDrawRectangle, F_EE_CInfinityDrawRectangle
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCInfinityRenderAOE, F_EE_CInfinityRenderAOE
-    ; CInfGame
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCInfGameAddCTA, F_EE_CInfGameAddCTA
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCInfGameAddCTF, F_EE_CInfGameAddCTF
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCInfGameGetCharacterId, F_EE_CInfGameGetCharacterId
-    ; CObList
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCObListRemoveAll, F_EE_CObListRemoveAll
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCObListRemoveHead, F_EE_CObListRemoveHead
-    ; CResRef
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCResRefGetResRefStr, F_EE_CResRefGetResRefStr
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCResRefIsValid, F_EE_CResRefIsValid
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCResRefCResRef, F_EE_CResRefCResRef
-    Invoke IniWriteValue, Addr szIniEEex, Addr szIniCResRefOpEqu, F_EE_CResRefOpEqu
-    Invoke IniWriteValue, Addr szIniEEex, Addr szIniCResRefOpNotEqu, F_EE_CResRefOpNotEqu
-    ; CString
-    Invoke IniWriteValue, Addr szIniEEex, Addr szIniCStringOpPlus, F_EE_CStringOpPlus
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCStringCString, F_EE_CStringCString
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCStringFindIndex, F_EE_CStringFindIndex
-    ; CInfButtonArray
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCInfButtonArraySetState, F_EE_CInfButtonArraySetState
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCInfButtonArrayUpdateButtons, F_EE_CInfButtonArrayUpdateButtons
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCInfButtonArraySTT, F_EE_CInfButtonArraySTT
-    ; CGameEffect
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCGameEffectCGameEffect, F_EE_CGameEffectCGameEffect
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCGameEffectCopyFromBase, F_EE_CGameEffectCopyFromBase
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCGameEffectGetItemEffect, F_EE_CGameEffectGetItemEffect
-     ; Misc
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCGameObjectArrayGetDeny, F_EE_CGameObjectArrayGetDeny
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCGameEffectFireSpell, F_EE_CGameEffectFireSpell
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCGameAIBaseFireSpellPoint, F_EE_CGameAIBaseFireSpellPoint
-    Invoke IniWriteValue, Addr szIniEEex, Addr szdimmGetResObject, F_EE_dimmGetResObject
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCAIActionDecode, F_EE_CAIActionDecode
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCListRemoveAt, F_EE_CListRemoveAt
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCRuleTablesMapCSTS, F_EE_CRuleTablesMapCSTS
-    Invoke IniWriteValue, Addr szIniEEex, Addr szoperator_new, F_EE_operator_new
-    Invoke IniWriteValue, Addr szIniEEex, Addr szCAIScriptCAIScript, F_EE_CAIScriptCAIScript
-    ; Other functions
-    Invoke IniWriteValue, Addr szIniEEex, Addr sz_ftol2_sse, F__ftol2_sse
-    Invoke IniWriteValue, Addr szIniEEex, Addr sz_mbscmp, F__mbscmp
-    Invoke IniWriteValue, Addr szIniEEex, Addr szp_malloc, F_p_malloc
-
-    ;--------------------------------------------------------------------------
-    ; Write out pattern addresses of game globals to ini file
-    ;--------------------------------------------------------------------------
-    Invoke IniWriteValue, Addr szIniEEex, Addr sz_pp_pChitin, pp_pChitin
-    Invoke IniWriteValue, Addr szIniEEex, Addr sz_pp_pBaldurChitin, pp_pBaldurChitin
-    Invoke IniWriteValue, Addr szIniEEex, Addr sz_pp_backgroundMenu, pp_backgroundMenu
-    Invoke IniWriteValue, Addr szIniEEex, Addr sz_pp_overlayMenu, pp_overlayMenu
-    Invoke IniWriteValue, Addr szIniEEex, Addr sz_pp_timer_ups, pp_timer_ups
-    Invoke IniWriteValue, Addr szIniEEex, Addr sz_pp_aB_1, pp_aB_1
-    Invoke IniWriteValue, Addr szIniEEex, Addr sz_pp_CGameSprite_vftable, pp_CGameSprite_vftable
-    Invoke IniWriteValue, Addr szIniEEex, Addr sz_pp_CAIObjectTypeANYONE, pp_CAIObjectTypeANYONE
-    Invoke IniWriteValue, Addr szIniEEex, Addr sz_pp_VersionString_Push, pp_VersionString_Push
- 
     xor eax, eax
     ret
 EEexWriteAddressesToIni ENDP
@@ -2878,6 +2254,158 @@ convert:
     ret
 EEexDwordToAsciiHex ENDP
 
+
+EEEX_ALIGN
+;-------------------------------------------------------------------------------------
+; Convert a human readable hex based string to raw bytes
+; lpRaw should be at least half the size of the lpszAsciiHexString
+; Returns: On success eax contains size of raw bytes in lpRaw, or 0 if failure.
+;-------------------------------------------------------------------------------------
+EEexHexStringToRaw PROC USES EBX EDI ESI lpszAsciiHexString:DWORD, lpRaw:DWORD
+    LOCAL pos:DWORD
+    LOCAL dwLenHexString:DWORD
+    LOCAL dwLenRaw:DWORD
+    
+    .IF lpRaw == NULL || lpszAsciiHexString == NULL
+        mov eax, 0
+        ret
+    .ENDIF
+
+    Invoke lstrlen, lpszAsciiHexString
+    .IF eax == 0
+        ret
+    .ENDIF
+    mov dwLenHexString, eax
+
+    xor ebx, ebx
+    mov dwLenRaw, 0
+    mov pos, 0d
+    mov edi, lpRaw
+    mov esi, lpszAsciiHexString
+    mov eax, 0
+    .WHILE eax < dwLenHexString
+        ; first ascii char
+        movzx eax, byte ptr [esi]
+        .IF al >= 48 && al <=57d
+            sub al, 48d
+        .ELSEIF al >= 65d && al <= 90d
+            sub al, 55d
+        .ELSEIF al >= 97d && al <= 122d
+            sub al, 87d
+        .ELSEIF al == ' '           ; skip space character
+            inc esi
+            inc pos
+            mov eax, pos
+            .CONTINUE
+        .ELSEIF al == 0             ; null
+            .BREAK                  ; exit as we hit null
+        .ELSE
+            mov dwLenRaw, 0         ; set to 0 for error
+            .BREAK                  ; exit as not 0-9, a-f, A-F
+        .ENDIF
+
+        shl al, 4
+        mov bl, al
+        inc esi
+
+        ; second ascii char
+        movzx eax, byte ptr [esi]
+        .IF al >= 48 && al <=57d
+            sub al, 48d
+        .ELSEIF al >= 65d && al <= 90d
+            sub al, 55d
+        .ELSEIF al >= 97d && al <= 122d
+            sub al, 87d
+        .ELSEIF al == ' '           ; skip space character
+            mov byte ptr [edi], al  ; store the asciihex(AL) in the raw buffer 
+            inc dwLenRaw
+            inc edi
+            inc esi
+            inc pos
+            mov eax, pos
+            .CONTINUE               ; loop again to get next chars
+        .ELSEIF al == 0             ; null
+            mov byte ptr [edi], al  ; store the asciihex(AL) in the raw buffer
+            inc dwLenRaw
+            .BREAK                  ; exit as we hit null
+        .ELSE
+            mov dwLenRaw, 0         ; set to 0 for error
+            .BREAK                  ; exit as not 0-9, a-f, A-F
+        .ENDIF
+        
+        add al, bl
+        mov byte ptr [edi], al      ; store the asciihex(AL) in the raw buffer   
+        
+        inc dwLenRaw
+        inc edi
+        inc esi
+        inc pos
+        mov eax, pos
+    .ENDW
+
+    mov eax, dwLenRaw
+    ret
+EEexHexStringToRaw ENDP
+
+
+EEEX_ALIGN
+;-------------------------------------------------------------------------------------
+; Convert raw bytes to a human readable hex based string
+; lpszAsciiHexString should be at least twice the size of dwRawSize +1 byte for null
+; Returns: TRUE if success, FALSE otherwise
+;-------------------------------------------------------------------------------------
+EEexRawToHexString PROC USES EDI ESI lpRaw:DWORD, dwRawSize:DWORD, lpszAsciiHexString:DWORD, bUpperCase:DWORD
+    LOCAL pos:DWORD
+    
+    .IF lpRaw == NULL || dwRawSize == 0 || lpszAsciiHexString == NULL
+        mov eax, FALSE
+        ret
+    .ENDIF
+
+    mov pos, 0d
+    mov edi, lpszAsciiHexString
+    mov esi, lpRaw
+    mov eax, 0
+    .WHILE eax < dwRawSize
+        movzx eax, byte ptr [esi]
+        mov ah,al
+        ror al, 4                   ; shift in next hex digit
+        and al, 0FH                 ; get digit
+        .IF al < 10
+            add al, "0"             ; convert digits 0-9 to ascii
+        .ELSE
+            .IF bUpperCase == TRUE
+                add al, ("A"-10)    ; convert digits 0Ah to 0Fh to uppercase ascii A-F
+            .ELSE
+                add al, ("a"-10)    ; convert digits 0Ah to 0Fh to lowercase ascii a-f
+            .ENDIF
+        .ENDIF
+        mov byte ptr [edi], al      ; store the asciihex(AL) in the string   
+        inc edi
+        mov al,ah
+        
+        and al, 0FH                 ; get digit
+        .IF al < 10
+            add al, "0"             ; convert digits 0-9 to ascii
+        .ELSE
+            .IF bUpperCase == TRUE
+                add al, ("A"-10)    ; convert digits 0Ah to 0Fh to uppercase ascii A-F
+            .ELSE
+                add al, ("a"-10)    ; convert digits 0Ah to 0Fh to lowercase ascii a-f
+            .ENDIF
+        .ENDIF
+        mov byte ptr [edi], al      ; store the asciihex(AL) in the string   
+
+        inc edi
+        inc esi
+        inc pos
+        mov eax, pos
+    .ENDW
+    mov byte ptr [edi], 0
+    
+    mov eax, TRUE
+    ret
+EEexRawToHexString ENDP
 
 
 END DllEntry

@@ -61,6 +61,7 @@ szTRIGGERids            DB "TRIGGER.ids",0
 szOBJECTids             DB "OBJECT.ids",0
 szACTIONids             DB "ACTION.ids",0
 szM__EEexlua            DB "M__EEex.lua",0
+szEEexDB                DB "\EEex.db",0
 
 szEEexDLL               DB "EEex.dll",0
 szKernel32Dll           DB "kernel32.dll",0
@@ -83,6 +84,7 @@ szErrorEEGameEXE        DB "Failed to locate a Beamdog Enhanced Edition game exe
 szErrorEEexDLLFind      DB "Failed to locate EEex.dll. Make sure it is located in the game folder along with EEex.exe",0   
 szErrorEEOverrideFiles  DB "One of more override files appear to be missing: UI.menu, TRIGGER.ids, OBJECT.ids and ACTION.ids",0
 szErrorM__EEexMissing   DB "M__EEex.lua is missing in the override folder - cannot continue.",0
+szErrorEEexDBMissing    DB "EEex.db is missing - cannot continue.",0
 
 ; EE Game Version Check Error Messages:
 szErrorBeamdog_BGEE     DB "Your version of Baldur's Gate is incompatible with EEex.",0
@@ -119,7 +121,7 @@ szFileTRIGGERids        DB MAX_PATH DUP (0)
 szFileOBJECTids         DB MAX_PATH DUP (0)
 szFileACTIONids         DB MAX_PATH DUP (0)
 szFileM__EEexlua        DB MAX_PATH DUP (0)
-
+szFileEEexDB            DB MAX_PATH DUP (0)
 
 .DATA?
 ;------------------------------------------------------------------------------

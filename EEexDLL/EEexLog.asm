@@ -41,7 +41,7 @@ LOG_CLOSE               EQU 9
 
 
 .DATA
-hLogFile                DD -1
+hLogFile                DD INVALID_HANDLE_VALUE
 
 szLog                   DB "log",0
 szLog_Backslash         DB "\",0
