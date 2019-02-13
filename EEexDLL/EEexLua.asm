@@ -28,7 +28,7 @@ EEex_ExposeToLua        PROTO C :VARARG         ; (lua_State), FunctionAddress, 
 EEex_Call               PROTO C :VARARG         ; (lua_State)
 
 EEex_AddressList        PROTO C :DWORD          ; (lua_State)
-EEex_AddressListAsm     PROTO C
+EEex_AddressListAsm     PROTO C :DWORD          ; (lua_State)
 EEex_AddressListCount   PROTO C
 
 IFDEF EEEX_LUALIB       ; use this internal one rather than static version as it crashes
@@ -59,6 +59,7 @@ szEEex_Call             DB "EEex_Call",0
 szEEex_AddressList      DB "EEex_AddressList",0
 szEEex_AddressListAsm   DB "EEex_AddressListAsm",0
 szEEex_AddressListCount DB "EEex_AddressListCount",0
+szEEex_LuaAddressList   DB "LuaAddressList",0
 
 pAddressList            DD 0 ; points to array of ALENTRY entries x TotalPatterns 
 
@@ -508,6 +509,7 @@ EEex_AddressList PROC C USES EBX lua_State:DWORD
     LOCAL ptrCurrentPattern:DWORD
     LOCAL lpszPatternName:DWORD
     LOCAL dwPatternAddress:DWORD
+    LOCAL qwAddress:QWORD
     
     IFDEF EEEX_LOGGING
     IFDEF EEEX_LOGLUACALLS
@@ -531,7 +533,9 @@ EEex_AddressList PROC C USES EBX lua_State:DWORD
             mov lpszPatternName, eax
             
             Invoke F_Lua_pushstring, lua_State, lpszPatternName
-            Invoke F_Lua_pushnumber, lua_State, dwPatternAddress
+            fild dwPatternAddress
+            fstp qword ptr [qwAddress]            
+            Invoke F_Lua_pushnumber, lua_State, Addr qwAddress ; dwPatternAddress
             Invoke F_Lua_settable, lua_State, -3
             
         .ENDIF
@@ -543,16 +547,24 @@ EEex_AddressList PROC C USES EBX lua_State:DWORD
     
     ; handle special cases, like GetProcAddress, LoadLibrary etc
     Invoke F_Lua_pushstring, lua_State, Addr szGetProcAddress
-    Invoke F_Lua_pushnumber, lua_State, F_GetProcAddress
-    Invoke F_Lua_settable, lua_State, -3
-    Invoke F_Lua_pushstring, lua_State, Addr szLoadLibrary
-    Invoke F_Lua_pushnumber, lua_State, F_LoadLibrary
-    Invoke F_Lua_settable, lua_State, -3
-    Invoke F_Lua_pushstring, lua_State, Addr szSDL_Free
-    Invoke F_Lua_pushnumber, lua_State, F_SDL_free
+    fild F_GetProcAddress
+    fstp qword ptr [qwAddress]      
+    Invoke F_Lua_pushnumber, lua_State, Addr qwAddress ; F_GetProcAddress
     Invoke F_Lua_settable, lua_State, -3
     
-    Invoke F_Lua_setglobal, lua_State, Addr szEEex_AddressList
+    Invoke F_Lua_pushstring, lua_State, Addr szLoadLibrary
+    fild F_LoadLibrary
+    fstp qword ptr [qwAddress]     
+    Invoke F_Lua_pushnumber, lua_State, Addr qwAddress ; F_LoadLibrary
+    Invoke F_Lua_settable, lua_State, -3
+    
+    Invoke F_Lua_pushstring, lua_State, Addr szSDL_Free
+    fild F_SDL_free
+    fstp qword ptr [qwAddress]      
+    Invoke F_Lua_pushnumber, lua_State, Addr qwAddress ; F_SDL_free
+    Invoke F_Lua_settable, lua_State, -3
+    
+    ;Invoke F_Lua_setglobal, lua_State, Addr szEEex_LuaAddressList
     
     mov eax, 1
     ret
@@ -567,12 +579,13 @@ EEEX_ALIGN
 ;
 ; Returns: pointer to address list array or 0 if fail
 ;------------------------------------------------------------------------------
-EEex_AddressListAsm PROC C USES EBX EDX
+EEex_AddressListAsm PROC C USES EBX EDX lua_State:DWORD
     LOCAL nPattern:DWORD
     LOCAL ptrCurrentPattern:DWORD
     LOCAL ptrCurrentALEntry:DWORD
     LOCAL lpszPatternName:DWORD
     LOCAL dwPatternAddress:DWORD
+    LOCAL qwAddress:QWORD
     
     ;--------------------------------------------------------------------------
     ; Create pAddressList if it doesnt exist, otherwise return address of it
@@ -630,8 +643,12 @@ EEex_AddressListAsm PROC C USES EBX EDX
     mov eax, F_SDL_free
     mov [edx].ALENTRY.dwAddress, eax
  
-
-    mov eax, pAddressList
+    ;mov eax, pAddressList
+    fild pAddressList
+    fstp qword ptr [qwAddress]
+    Invoke F_Lua_pushnumber, lua_State, Addr qwAddress
+    
+    mov eax, 1
     ret
 EEex_AddressListAsm ENDP
 
