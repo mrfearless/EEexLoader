@@ -194,10 +194,6 @@ EEGameImageSize         DD 0
 EEGameNoSections        DD 0
 EEGameSectionTEXTSize   DD 0
 EEGameSectionTEXTPtr    DD 0
-EEGameSectionRDATASize  DD 0
-EEGameSectionRDATAPtr   DD 0
-EEGameSectionDATASize   DD 0
-EEGameSectionDATAPtr    DD 0
 EEGameAddressEP         DD 0
 EEGameAddressStart      DD 0
 EEGameAddressFinish     DD 0

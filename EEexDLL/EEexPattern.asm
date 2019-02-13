@@ -70,9 +70,9 @@ PatchLocation           DD 0 ; call XXXEEgame:luaL_loadstring replaced with call
 ; Lua Function pointers
 ;---------------------------
 ; typedef prototypes:
-Lua_createtableProto    TYPEDEF PROTO C luastate:DWORD, narr:DWORD, nrec:DWORD
+Lua_createtableProto    TYPEDEF PROTO C :VARARG ;luastate:DWORD, narr:DWORD, nrec:DWORD
 Lua_createtablePtr      TYPEDEF PTR Lua_createtableProto
-Lua_createtablexProto   TYPEDEF PROTO C luastate:DWORD ; override for no narr and nrec params of lua_createtable
+Lua_createtablexProto   TYPEDEF PROTO C :VARARG ;luastate:DWORD ; override for no narr and nrec params of lua_createtable
 Lua_createtablexPtr     TYPEDEF PTR Lua_createtablexProto
 Lua_getglobalProto      TYPEDEF PROTO C luastate:DWORD, ptr_name:DWORD
 Lua_getglobalPtr        TYPEDEF PTR Lua_getglobalProto
@@ -86,9 +86,9 @@ Lua_pushlightuserdataProto TYPEDEF PROTO C luastate:DWORD, p:DWORD
 Lua_pushlightuserdataPtr TYPEDEF PTR Lua_pushlightuserdataProto
 Lua_pushlstringProto    TYPEDEF PROTO C luastate:DWORD, ptr_string:DWORD, stringlen:DWORD
 Lua_pushlstringPtr      TYPEDEF PTR Lua_pushlstringProto
-Lua_pushnumberProto     TYPEDEF PROTO C luastate:DWORD, lua_Number:DWORD
+Lua_pushnumberProto     TYPEDEF PROTO C :VARARG ;luastate:DWORD, lua_Number:DWORD
 Lua_pushnumberPtr       TYPEDEF PTR Lua_pushnumberProto
-Lua_pushstringProto     TYPEDEF PROTO C luastate:DWORD, ptr_string:DWORD
+Lua_pushstringProto     TYPEDEF PROTO C :VARARG ;luastate:DWORD, ptr_string:DWORD
 Lua_pushstringPtr       TYPEDEF PTR Lua_pushstringProto
 Lua_rawgetiProto        TYPEDEF PROTO C luastate:DWORD, index:DWORD, n:DWORD
 Lua_rawgetiPtr          TYPEDEF PTR Lua_rawgetiProto
@@ -98,7 +98,7 @@ Lua_setfieldProto       TYPEDEF PROTO C luastate:DWORD, index:DWORD, ptr_string:
 Lua_setfieldPtr         TYPEDEF PTR Lua_setfieldProto
 Lua_setglobalProto      TYPEDEF PROTO C :VARARG ;luastate:DWORD, ptr_name:DWORD
 Lua_setglobalPtr        TYPEDEF PTR Lua_setglobalProto
-Lua_settableProto       TYPEDEF PROTO C luastate:DWORD, index:DWORD
+Lua_settableProto       TYPEDEF PROTO C :VARARG ;luastate:DWORD, index:DWORD
 Lua_settablePtr         TYPEDEF PTR Lua_settableProto
 Lua_settopProto         TYPEDEF PROTO C luastate:DWORD, index:DWORD
 Lua_settopPtr           TYPEDEF PTR Lua_settopProto
@@ -114,7 +114,7 @@ Lua_typeProto           TYPEDEF PROTO C luastate:DWORD, index:DWORD
 Lua_typePtr             TYPEDEF PTR Lua_typeProto
 Lua_typenameProto       TYPEDEF PROTO C luastate:DWORD, tp:DWORD
 Lua_typenamePtr         TYPEDEF PTR Lua_typenameProto
-LuaL_loadstringProto    TYPEDEF PROTO C luastate:DWORD, ptr_string:DWORD
+LuaL_loadstringProto    TYPEDEF PROTO C :VARARG ;luastate:DWORD, ptr_string:DWORD
 LuaL_loadstringPtr      TYPEDEF PTR LuaL_loadstringProto
 ftol2_sseProto          TYPEDEF PROTO C :VARARG
 ftol2_ssePtr            TYPEDEF PTR ftol2_sseProto
