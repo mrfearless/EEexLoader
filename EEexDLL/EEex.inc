@@ -179,14 +179,18 @@ szLuaL_loadstring               DB "_luaL_loadstring",0
 sz_ftol2_sse                    DB "__ftol2_sse",0
 szGetProcAddress                DB "__imp__GetProcAddress",0
 szLoadLibrary                   DB "__imp__LoadLibraryA",0
+szGetProcAddressProc            DB "GetProcAddress",0
+szLoadLibraryProc               DB "LoadLibraryA",0
 szSDL_Free                      DB "_SDL_free",0
 szSDL_FreeExport                DB "SDL_free",0
-
+szKernel32Dll                   DB "kernel32.dll",0
 
 
 ;---------------------------
 ; Module and section info
 ;---------------------------
+hKernel32               DD 0
+hModule                 DD 0
 hEEGameModule           DD 0
 hEEGameProcess          DD 0
 EEGameBaseAddress       DD 0

@@ -88,7 +88,7 @@ EEexLuaInit PROC C lua_State:DWORD, lpszString:DWORD
     IFDEF DEBUG32
     PrintText 'EEexLuaInit'
     ENDIF
-    
+
     ; Get g_lua from p_lua whilst game is running
     ; g_lua is used in lua function calls in EEexLua.asm
     mov eax, p_lua

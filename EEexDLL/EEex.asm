@@ -385,9 +385,11 @@ EEexInitGlobals PROC USES EBX
     ;--------------------------------------------------------------------------
     ; Get addresses of win32 api functions
     ;--------------------------------------------------------------------------
-    lea eax, GetProcAddress
+    Invoke GetModuleHandle, Addr szKernel32Dll
+    mov hKernel32, eax
+    Invoke GetProcAddress, hKernel32, Addr szGetProcAddressProc
     mov F_GetProcAddress, eax
-    lea eax, LoadLibrary
+    Invoke GetProcAddress, hKernel32, Addr szLoadLibraryProc
     mov F_LoadLibrary, eax
     Invoke GetProcAddress, 0, Addr szSDL_FreeExport
     mov F_SDL_free, eax
@@ -847,6 +849,7 @@ EEexSearchPatterns PROC USES EBX ESI
     LOCAL dwAddress:DWORD
     LOCAL dwAddressFinish:DWORD
     LOCAL dwAddressValue:DWORD
+    LOCAL dwPatAddress:DWORD
     LOCAL PatAdj:DWORD
     LOCAL PatBytes:DWORD
     LOCAL PatLength:DWORD
@@ -904,11 +907,8 @@ EEexSearchPatterns PROC USES EBX ESI
                                 mov [ebx].PATTERN.bFound, TRUE
                                 mov eax, dwAddress
                                 add eax, [ebx].PATTERN.PatAdj
+                                mov dwPatAddress, eax 
                                 mov [ebx].PATTERN.PatAddress, eax
-                                ;mov ebx, [ebx].PATTERN.FuncAddress ; Offset to internal global var to set for address
-                                ;.IF ebx != 0
-                                ;    mov [ebx], eax ; store address in our internal global var
-                                ;.ENDIF
                                 inc FoundPatterns ; PatternsFound
                                 
                                 ; Free pattern memory as we dont need it anymore
