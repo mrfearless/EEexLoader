@@ -26,50 +26,7 @@ The Lua `EEexInit` function in turn registers and sets global visibility to the 
 
 # Build Instructions
 
-The projects can be compiled with the [RadASM IDE](http://www.softpedia.com/get/Programming/File-Editors/RadASM.shtml) or manually with just the [Masm32 SDK](http://www.masm32.com/download.htm).
-
-**Requirements:**
-- [RadASM IDE](http://www.softpedia.com/get/Programming/File-Editors/RadASM.shtml)
-- [Masm32 SDK](http://www.masm32.com/download.htm)
-
-**Building with RadASM IDE**
-
-- Open up the RadASM project file (`*.rap`)
-- Select the menu option: 
-	- Make -> Compile RC
-	- Make -> Assemble
-	- Make -> Link
-	- or Make -> Build to do all steps at once
-
-**Manual Build Instructions For EEex (`EEex.exe`)**
-
-- Open a command prompt
-- Navigate to the appropriate projects folder
-- Enter the following commands, one at a time:
-```
-\MASM32\BIN\RC.EXE /v EEex.rc
-```
-```
-\MASM32\BIN\ML.EXE /c /coff /Cp /nologo /I"\MASM32\INCLUDE" /LIBPATH:"\MASM32\LIB" EEex.asm
-```
-```
-\MASM32\BIN\LINK.EXE /SUBSYSTEM:WINDOWS /RELEASE /VERSION:4.0 /LIBPATH:"\MASM32\LIB" /OUT:"EEex.exe" EEex.obj EEex.res
-```
-
-**Manual Build Instructions For EEexDLL (`EEex.dll`)**
-
-- Open a command prompt
-- Navigate to the appropriate projects folder
-- Enter the following commands, one at a time:
-```
-\MASM32\BIN\RC.EXE /v EEex.rc
-```
-```
-\MASM32\BIN\ML.EXE /c /coff /Cp /nologo /I"\MASM32\INCLUDE" /LIBPATH:"\MASM32\LIB" EEex.asm
-```
-```
-\MASM32\BIN\LINK.EXE /SUBSYSTEM:WINDOWS /RELEASE /DLL /VERSION:4.0 /LIBPATH:"\MASM32\LIB" /OUT:"EEex.dll" EEex.obj EEex.res
-```
+See the [Build-Instructions](https://github.com/mrfearless/EEexLoader/wiki/Build-Instructions) wiki entry for details of building the projects.
 
 # Download
 
