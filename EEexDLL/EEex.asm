@@ -642,20 +642,30 @@ EEexImportPatterns PROC USES EBX
                     mov [ebx].PATTERN.PatAddress, eax
                     inc SkippedImportedPatterns
                 .ELSE
+                    .IF dwPatType == 2
+                        ; Get type 2 <PatternName> Count= from EEex.ini and store in veradj
+                        Invoke IniReadValue, lpszPatternName, Addr szIniCount, 0
+                        mov ebx, pPatternEntry
+                        mov [ebx].PATTERN.VerAdj, eax
+                    .ELSE
+                        ; Get <PatternName> from EEex.ini - if it exists, which will speed up verification
+                        Invoke IniReadValue, Addr szIniEEex, lpszPatternName, 0
+                        mov ebx, pPatternEntry
+                        mov [ebx].PATTERN.PatAddress, eax
+                    .ENDIF
+                    inc ImportedPatterns
+                .ENDIF
+            .ELSE
+                .IF dwPatType == 2
+                    ; Get type 2 <PatternName> Count= from EEex.ini and store in veradj
+                    Invoke IniReadValue, lpszPatternName, Addr szIniCount, 0
+                    mov ebx, pPatternEntry
+                    mov [ebx].PATTERN.VerAdj, eax
+                .ELSE            
                     ; Get <PatternName> from EEex.ini - if it exists, which will speed up verification
                     Invoke IniReadValue, Addr szIniEEex, lpszPatternName, 0
                     mov ebx, pPatternEntry
                     mov [ebx].PATTERN.PatAddress, eax
-                    inc ImportedPatterns
-                .ENDIF
-            .ELSE
-                ; Get <PatternName> from EEex.ini - if it exists, which will speed up verification
-                Invoke IniReadValue, Addr szIniEEex, lpszPatternName, 0
-                mov ebx, pPatternEntry
-                .IF eax != 0
-                    mov [ebx].PATTERN.PatAddress, eax
-                .ELSE
-                    mov [ebx].PATTERN.PatAddress, 0
                 .ENDIF
                 inc ImportedPatterns
             .ENDIF
@@ -735,13 +745,12 @@ EEexVerifyPatterns PROC USES EBX
     mov eax, 0
     .WHILE eax < TotalPatterns
         mov eax, [ebx].PATTERN.PatAddress
-        ;mov eax, [eax] ; PatAddress is address of function or global
-        .IF eax == 0 ;|| eax > dwAddressMax ; just in case
-            ;IFDEF DEBUG32
-            ;PrintText 'PatAddress is null.'
-            ;PrintDec nPattern
-            ;ENDIF
-            inc NotVerifiedPatterns
+        .IF eax == 0 || [ebx].PATTERN.PatType == 2 ;|| eax > dwAddressMax ; just in case
+            .IF [ebx].PATTERN.PatType == 2
+                inc SkippedVerifyPatterns ; verify type 2 patterns elsewhere
+            .ELSE
+                inc NotVerifiedPatterns
+            .ENDIF
             add ptrCurrentPattern, SIZEOF PATTERN
             mov ebx, ptrCurrentPattern
             inc nPattern
@@ -824,13 +833,154 @@ EEexVerifyPatterns PROC USES EBX
     mov eax, VerifiedPatterns
     add eax, SkippedVerifyPatterns
     .IF eax == TotalPatterns && TotalPatterns != 0
-        mov eax, TRUE
+        .IF SkippedVerifyPatterns > 0
+            Invoke EEexVerifyType2Patterns ; check and verify for type 2 patterns
+        .ELSE
+            mov eax, TRUE
+        .ENDIF    
     .ELSE
         mov eax, FALSE
     .ENDIF
 
     ret
 EEexVerifyPatterns ENDP
+
+
+EEEX_ALIGN
+;------------------------------------------------------------------------------
+; EEexVerifyType2Patterns - Verify type 2 patterns. Type 2 patterns have a
+; section in the EEex.ini named after the pattern. The section has one key value
+; 'Count=' that stores the number of address entries in the section. The address
+; entries are enumerated as '1=0x1234ABCD', '2=ABCD1234' etc up to the value 
+; obtained from the 'Count=' key.
+;
+; Returns: TRUE if all type 2 patterns where succesfully verified or FALSE.
+;------------------------------------------------------------------------------
+EEexVerifyType2Patterns PROC USES EBX
+    LOCAL nPattern:DWORD
+    LOCAL ptrCurrentPattern:DWORD
+    LOCAL nTotal:DWORD
+    LOCAL nCount:DWORD
+    LOCAL lpszPatternName:DWORD
+    LOCAL PatBytes:DWORD
+    LOCAL PatLength:DWORD
+    LOCAL PatAddress:DWORD
+    LOCAL pType2Array:DWORD
+    LOCAL pCurrentType2Entry:DWORD
+    LOCAL RetVal:DWORD
+    
+    IFDEF DEBUG32
+    PrintText 'EEexVerifyType2Patterns'
+    ENDIF    
+    
+    mov RetVal, TRUE
+    
+    mov ebx, PatternsDatabase
+    mov ptrCurrentPattern, ebx
+    mov nPattern, 0
+    mov eax, 0
+    .WHILE eax < TotalPatterns
+        .IF [ebx].PATTERN.PatType == 2
+            
+            mov eax, [ebx].PATTERN.VerAdj ; VerAdj is used to store 'Count=' of keys for type2 patterns
+            .IF eax != 0
+                mov nTotal, eax
+
+                mov eax, [ebx].PATTERN.PatBytes
+                .IF eax != NULL
+                    mov PatBytes, eax
+                    mov eax, [ebx].PATTERN.PatLength
+                    mov PatLength, eax
+                    mov eax, [ebx].PATTERN.PatName
+                    mov lpszPatternName, eax
+                    
+                    ;----------------------------------------------------------
+                    ; Alloc array for type 2 entries - array address will
+                    ; be stored in PatAddress field for type 2 patterns
+                    ;----------------------------------------------------------
+                    mov eax, nTotal
+                    inc eax ; add extra 1 to null last entry
+                    mov ebx, SIZEOF DWORD
+                    mul ebx
+                    Invoke GlobalAlloc, GMEM_FIXED or GMEM_ZEROINIT, eax
+                    .IF eax == NULL
+                        .BREAK
+                    .ENDIF
+                    mov pType2Array, eax
+                    mov pCurrentType2Entry, eax
+                    
+                    ;----------------------------------------------------------
+                    ; loop through <PatternName> section in EEex.ini and fetch
+                    ; 1=x, 2=x, 3=x and so on for each x address up to total
+                    ; count and verify each address contains PatBytes
+                    ;----------------------------------------------------------
+                    mov nCount, 0
+                    mov eax, 0
+                    .WHILE eax < nTotal
+                        
+                        Invoke EEexDwordToAscii, nCount, Addr szIniEnumString ; convert n integer to string 'n'
+                        Invoke IniReadValue, lpszPatternName, Addr szIniEnumString, 0 ; n=0x1234ABCD
+                        .IF eax != 0
+                            mov PatAddress, eax
+                            Invoke PatternVerify, PatAddress, PatBytes, PatLength
+                            .IF eax == FALSE
+                                .BREAK ; if any are 0 then have to fail this type 2 pattern
+                            .ENDIF
+                            ; Verified, so store in our array
+                            mov ebx, pCurrentType2Entry
+                            mov eax, PatAddress
+                            mov [ebx], eax
+                        .ELSE
+                            .BREAK ; if any are 0 then have to fail this type 2 pattern
+                        .ENDIF
+                        
+                        add pCurrentType2Entry, SIZEOF DWORD
+                        inc nCount
+                        mov eax, nCount
+                    .ENDW
+                    
+                    ;----------------------------------------------------------
+                    ; After coming out of loop decide how to proceed
+                    ;----------------------------------------------------------
+                    mov ebx, ptrCurrentPattern
+                    IFDEF DEBUG32
+                    PrintDec nCount
+                    PrintDec nTotal
+                    ENDIF
+                    mov eax, nCount
+                    .IF eax == nTotal ; looped through all successfully
+                        mov [ebx].PATTERN.bFound, TRUE
+                        mov eax, pType2Array
+                        mov [ebx].PATTERN.PatAddress, eax ; array of these addresses are stored in PatAddress field
+                        .IF SkippedVerifyPatterns > 0
+                            dec SkippedVerifyPatterns
+                            inc VerifiedPatterns
+                        .ENDIF
+                        
+                    .ELSE ; broke out early coz we had a 0 address for one of the keys in the type2 pattern section in EEex.ini
+                        mov [ebx].PATTERN.bFound, FALSE
+                        mov eax, pType2Array
+                        .IF eax != 0
+                            Invoke GlobalFree, eax ; free array as we cant use it, as its incomplete
+                        .ENDIF
+                        mov RetVal, FALSE ; any not verified will trigger FALSE return value
+                    .ENDIF
+                    
+                .ENDIF
+            .ELSE
+                ; nothing to verify, first run of type2 pattern?
+            .ENDIF
+        .ENDIF
+    
+        add ptrCurrentPattern, SIZEOF PATTERN
+        mov ebx, ptrCurrentPattern
+        inc nPattern
+        mov eax, nPattern
+    .ENDW
+    
+    mov eax, RetVal
+    ret
+EEexVerifyType2Patterns ENDP
 
 
 EEEX_ALIGN
@@ -853,9 +1003,12 @@ EEexSearchPatterns PROC USES EBX ESI
     LOCAL PatAdj:DWORD
     LOCAL PatBytes:DWORD
     LOCAL PatLength:DWORD
+    LOCAL PatType:DWORD
     LOCAL VerAdj:DWORD
     LOCAL VerBytes:DWORD
     LOCAL VerLength:DWORD
+    LOCAL pType2Array:DWORD
+    LOCAL nCount:DWORD
     LOCAL RetVal:DWORD
 
     IFDEF DEBUG32
@@ -904,30 +1057,105 @@ EEexSearchPatterns PROC USES EBX ESI
     
                             .IF eax == TRUE ; No verbytes to check or verbytes matched
                                 mov ebx, ptrCurrentPattern
-                                mov [ebx].PATTERN.bFound, TRUE
-                                mov eax, dwAddress
-                                add eax, [ebx].PATTERN.PatAdj
-                                mov dwPatAddress, eax 
-                                mov [ebx].PATTERN.PatAddress, eax
-                                inc FoundPatterns ; PatternsFound
-                                
-                                ; Free pattern memory as we dont need it anymore
-                                mov ebx, ptrCurrentPattern
-                                mov eax, [ebx].PATTERN.PatBytes
-                                .IF eax != NULL && [ebx].PATTERN.PatLength != 0
-                                    Invoke GlobalFree, eax
-                                .ENDIF
-                                mov ebx, ptrCurrentPattern
-                                mov eax, [ebx].PATTERN.VerBytes
-                                .IF eax != NULL && [ebx].PATTERN.VerLength != 0
-                                    Invoke GlobalFree, eax
+                                .IF [ebx].PATTERN.PatType == 2
+                                    IFDEF DEBUG32
+                                    PrintText 'EEexSearchPatterns - Type 2 pattern found'
+                                    ENDIF
+                                    ;------------------------------------------
+                                    ; Handle type 2 patterns
+                                    ; Note: cant set to TRUE as we have to 
+                                    ; search for more type 2 occurances
+                                    ;------------------------------------------                                
+                                    mov eax, [ebx].PATTERN.PatAddress ; pointer to array
+                                    .IF eax == 0 ; No array has been allocated mem yet
+                                        IFDEF DEBUG32
+                                        PrintText 'EEexSearchPatterns - Type 2 array initial alloc'
+                                        ENDIF                                    
+                                        Invoke GlobalAlloc, GMEM_FIXED or GMEM_ZEROINIT, TYPE2_ARRAY_INITIAL_SIZE
+                                        .IF eax != NULL
+                                            mov pType2Array, eax
+                                            mov ebx, eax
+                                            mov eax, dwAddress
+                                            mov [ebx], eax ; save address to pType2Array[0] 
+                                            
+                                            mov ebx, ptrCurrentPattern
+                                            mov eax, pType2Array
+                                            mov [ebx].PATTERN.PatAddress, eax
+                                            mov [ebx].PATTERN.VerAdj, 1
+                                        .ELSE ; error could not allocate memory
+                                            mov ebx, ptrCurrentPattern
+                                            mov [ebx].PATTERN.PatAddress, 0
+                                            mov [ebx].PATTERN.VerAdj, 0
+                                        .ENDIF 
+                                    .ELSE ; existing array already stored in PatAddress
+                                        mov pType2Array, eax
+                                        
+                                        mov eax, [ebx].PATTERN.VerAdj
+                                        mov nCount, eax
+                                        and eax, 63d ; nCount mod 64 - realloc mem if nCount mod 64 == 0
+                                        .IF eax == 0 ; time to realloc. Every 64 entries we had another 64
+                                            IFDEF DEBUG32
+                                            PrintText 'EEexSearchPatterns - Type 2 array re-alloc'
+                                            ENDIF                                          
+                                            mov eax, nCount
+                                            add eax, 64d 
+                                            mov ebx, SIZEOF DWORD
+                                            mul ebx ; add (64 x 4) for additional 64 array entries
+                                            Invoke GlobalReAlloc, pType2Array, eax, GMEM_ZEROINIT or GMEM_MOVEABLE
+                                            .IF eax != NULL ; save changed array mem location back to PatAddress
+                                                mov pType2Array, eax
+                                                mov ebx, ptrCurrentPattern
+                                                mov eax, pType2Array
+                                                mov [ebx].PATTERN.PatAddress, eax                                                
+                                            .ELSE ; error could not re-allocate memory
+                                                mov ebx, ptrCurrentPattern
+                                                mov [ebx].PATTERN.PatAddress, 0
+                                                mov [ebx].PATTERN.VerAdj, 0
+                                                mov pType2Array, 0
+                                            .ENDIF
+                                        .ENDIF
+                                        .IF pType2Array != 0
+                                            mov eax, nCount
+                                            mov ebx, SIZEOF DWORD
+                                            mul ebx
+                                            mov ebx, pType2Array
+                                            add ebx, eax
+                                            mov eax, dwAddress
+                                            mov [ebx], eax ; save address to pType2Array[nCount]
+                                            
+                                            ; increment count of type 2 pattern
+                                            inc nCount
+                                            mov eax, nCount
+                                            mov ebx, ptrCurrentPattern
+                                            mov [ebx].PATTERN.VerAdj, eax                                            
+                                            
+                                        .ENDIF
+                                    .ENDIF
+                                .ELSE
+                                    ;------------------------------------------
+                                    ; Handle all other patterns types
+                                    ;------------------------------------------  
+                                    mov [ebx].PATTERN.bFound, TRUE
+                                    mov eax, dwAddress
+                                    add eax, [ebx].PATTERN.PatAdj
+                                    mov dwPatAddress, eax 
+                                    mov [ebx].PATTERN.PatAddress, eax
+                                    inc FoundPatterns ; PatternsFound
+                                    
+                                    ; Free pattern memory as we dont need it anymore
+                                    mov ebx, ptrCurrentPattern
+                                    mov eax, [ebx].PATTERN.PatBytes
+                                    .IF eax != NULL && [ebx].PATTERN.PatLength != 0
+                                        Invoke GlobalFree, eax
+                                    .ENDIF
+                                    mov ebx, ptrCurrentPattern
+                                    mov eax, [ebx].PATTERN.VerBytes
+                                    .IF eax != NULL && [ebx].PATTERN.VerLength != 0
+                                        Invoke GlobalFree, eax
+                                    .ENDIF
                                 .ENDIF
                                 
                             .ELSE ; pattern is similar to another but wasnt found and verified yet: A Get/Set function with minor differences?
-                                ;IFDEF DEBUG32
-                                ;PrintText 'EEexSearchPatterns - Failed to verify pattern'
-                                ;PrintDec nPattern
-                                ;ENDIF
                             .ENDIF
                         .ENDIF
                     .ENDIF
@@ -967,20 +1195,48 @@ EEexSearchPatterns PROC USES EBX ESI
         mov eax, 0
         .WHILE eax < TotalPatterns
             .IF [ebx].PATTERN.bFound == FALSE
-                inc NotFoundPatterns
-                IFDEF DEBUG32
-                PrintDec nPattern
-                ENDIF
-                mov [ebx].PATTERN.PatAddress, 0
-                ;mov eax, 0 ; set to 0 so we dont use existing value read from ini
-                ;mov ebx, [ebx].PATTERN.Patddress ; Offset to internal global var to set for address
-                ;mov [ebx], eax                
+            
+                .IF [ebx].PATTERN.PatType == 2 && [ebx].PATTERN.VerAdj != 0
+                    mov [ebx].PATTERN.bFound, TRUE
+                    inc FoundPatterns
+                    ; Free pattern memory as we dont need it anymore
+                    mov ebx, ptrCurrentPattern
+                    mov eax, [ebx].PATTERN.PatBytes
+                    .IF eax != NULL && [ebx].PATTERN.PatLength != 0
+                        Invoke GlobalFree, eax
+                    .ENDIF                    
+                .ELSE
+                    inc NotFoundPatterns
+                    IFDEF DEBUG32
+                    PrintDec nPattern
+                    ENDIF
+                    mov [ebx].PATTERN.PatAddress, 0
+                    
+                    ; Free pattern memory as we dont need it anymore
+                    mov ebx, ptrCurrentPattern
+                    mov eax, [ebx].PATTERN.PatBytes
+                    .IF eax != NULL && [ebx].PATTERN.PatLength != 0
+                        Invoke GlobalFree, eax
+                    .ENDIF
+                    mov ebx, ptrCurrentPattern
+                    mov eax, [ebx].PATTERN.VerBytes
+                    .IF eax != NULL && [ebx].PATTERN.VerLength != 0
+                        Invoke GlobalFree, eax
+                    .ENDIF                    
+                .ENDIF
             .ENDIF
             add ptrCurrentPattern, SIZEOF PATTERN
             mov ebx, ptrCurrentPattern
             inc nPattern
             mov eax, nPattern
         .ENDW
+    .ENDIF
+    
+    ; Double check again - in case we found type 2 patterns with count > 0
+    mov eax, FoundPatterns ; PatternsFound
+    add eax, SkippedFoundPatterns
+    .IF eax == TotalPatterns ; found all patterns!
+        mov RetVal, TRUE
     .ENDIF
 
     mov eax, RetVal
@@ -1121,7 +1377,7 @@ EEEX_ALIGN
 ; lua_rawgeti, lua_pushstring, lua_settable
 ; Returns: None 
 ;------------------------------------------------------------------------------
-EEexFunctionAddresses PROC
+EEexFunctionAddresses PROC USES EBX
     LOCAL nPattern:DWORD
     LOCAL ptrCurrentPattern:DWORD
     LOCAL lpszPatternName:DWORD
@@ -1130,55 +1386,6 @@ EEexFunctionAddresses PROC
     IFDEF DEBUG32
     PrintText 'EEexFunctionAddresses'
     ENDIF  
-
-;    IFDEF EEEX_LUALIB ; then gEEexLuaLibDefined == TRUE
-;    .IF gEEexLua == TRUE
-;        ; set function pointers to internal static lua library functions
-;        lea eax, lua_createtable
-;        mov F_Lua_createtable, eax
-;        lea eax, lua_getglobal
-;        mov F_Lua_getglobal, eax
-;        lea eax, lua_gettop
-;        mov F_Lua_gettop, eax
-;        lea eax, lua_pcallk
-;        mov F_Lua_pcallk, eax
-;        lea eax, lua_pushcclosure
-;        mov F_Lua_pushcclosure, eax
-;        lea eax, lua_pushlightuserdata
-;        mov F_Lua_pushlightuserdata, eax
-;        lea eax, lua_pushlstring
-;        mov F_Lua_pushlstring, eax
-;        lea eax, lua_pushnumber
-;        mov F_Lua_pushnumber, eax
-;        lea eax, lua_pushstring
-;        mov F_Lua_pushstring, eax
-;        lea eax, lua_rawgeti
-;        mov F_Lua_rawgeti, eax
-;        lea eax, lua_rawlen
-;        mov F_Lua_rawlen, eax
-;        lea eax, lua_setfield
-;        mov F_Lua_setfield, eax
-;        lea eax, lua_settable
-;        mov F_Lua_settable, eax
-;        lea eax, lua_settop
-;        mov F_Lua_settop, eax
-;        lea eax, lua_toboolean
-;        mov F_Lua_toboolean, eax
-;        lea eax, lua_tolstring
-;        mov F_Lua_tolstring, eax
-;        lea eax, lua_tonumberx
-;        mov F_Lua_tonumberx, eax
-;        lea eax, lua_touserdata
-;        mov F_Lua_touserdata, eax
-;        lea eax, lua_type
-;        mov F_Lua_type, eax
-;        lea eax, lua_typename
-;        mov F_Lua_typename, eax
-;        ; internal lua_setglobalx coz static version crashes
-;        lea eax, lua_setglobalx
-;        mov F_Lua_setglobal, eax
-;    .ENDIF
-;    ENDIF
 
     mov ebx, PatternsDatabase
     mov ptrCurrentPattern, ebx
@@ -1571,13 +1778,17 @@ EEexLogInformation PROC dwType:DWORD
         .IF gEEexLog >= LOGLEVEL_DETAIL
             .IF NotVerifiedPatterns > 0
                 Invoke LogMessage, CTEXT("Patterns Not Verified:"), LOG_STANDARD, 0
-                Invoke EEexLogPatterns, FALSE
+                Invoke EEexLogPatterns, FALSE, 0
+                Invoke EEexLogPatterns, FALSE, 1
+                Invoke EEexLogPatterns, FALSE, 2
                 Invoke LogMessage, 0, LOG_CRLF, 0
             .ENDIF
             mov eax, VerifiedPatterns ; show list of patterns if some verified
             .IF eax != TotalPatterns && TotalPatterns != 0 ; coz we skip searching, otherwise none shown
                 Invoke LogMessage, CTEXT("Patterns Verified:"), LOG_STANDARD, 0
-                Invoke EEexLogPatterns, TRUE
+                Invoke EEexLogPatterns, TRUE, 0
+                Invoke EEexLogPatterns, TRUE, 1
+                Invoke EEexLogPatterns, TRUE, 2
                 Invoke LogMessage, 0, LOG_CRLF, 0
             .ENDIF
         .ENDIF
@@ -1622,11 +1833,15 @@ EEexLogInformation PROC dwType:DWORD
             .IF dwType == INFO_SEARCHED
                 Invoke LogMessage, CTEXT("Patterns Found:"), LOG_STANDARD, 0
             .ENDIF
-            Invoke EEexLogPatterns, TRUE
+            Invoke EEexLogPatterns, TRUE, 0
+            Invoke EEexLogPatterns, TRUE, 1
+            Invoke EEexLogPatterns, TRUE, 2
             Invoke LogMessage, 0, LOG_CRLF, 0
             .IF NotFoundPatterns > 0
                 Invoke LogMessage, CTEXT("Patterns Not Found:"), LOG_STANDARD, 0
-                Invoke EEexLogPatterns, FALSE
+                Invoke EEexLogPatterns, FALSE, 0
+                Invoke EEexLogPatterns, FALSE, 1
+                Invoke EEexLogPatterns, FALSE, 2
                 Invoke LogMessage, 0, LOG_CRLF, 0
             .ENDIF
         .ENDIF
@@ -1635,7 +1850,9 @@ EEexLogInformation PROC dwType:DWORD
     .IF dwType == INFO_ADDRESSES
         .IF gEEexLog > LOGLEVEL_NONE
             Invoke LogMessage, CTEXT("Address List:"), LOG_INFO, 0
-            Invoke EEexLogPatterns, TRUE
+            Invoke EEexLogPatterns, TRUE, 0
+            Invoke EEexLogPatterns, TRUE, 1
+            Invoke EEexLogPatterns, TRUE, 2
             
             ; Handle extras like GetProcAddress, LoadLibrary etc
             Invoke LogMessage, Addr szGetProcAddress, LOG_NONEWLINE, 1
@@ -1660,7 +1877,7 @@ EEEX_ALIGN
 ; Called from EEexLogInformation
 ; Returns: None
 ;------------------------------------------------------------------------------
-EEexLogImportPatterns PROC bImportError:DWORD
+EEexLogImportPatterns PROC USES EBX bImportError:DWORD
     LOCAL nPattern:DWORD
     LOCAL ptrCurrentPattern:DWORD
     LOCAL lpszPatternName:DWORD
@@ -1727,7 +1944,7 @@ EEEX_ALIGN
 ; Called from EEexLogInformation
 ; Returns: None
 ;------------------------------------------------------------------------------
-EEexLogPatterns PROC bFoundPattern:DWORD
+EEexLogPatterns PROC USES EBX ECX bFoundPattern:DWORD, dwPatType:DWORD
     LOCAL nPattern:DWORD
     LOCAL ptrCurrentPattern:DWORD
     LOCAL lpszPatternName:DWORD
@@ -1739,16 +1956,22 @@ EEexLogPatterns PROC bFoundPattern:DWORD
     mov eax, 0
     .WHILE eax < TotalPatterns
         mov eax, [ebx].PATTERN.bFound
-        .IF eax == bFoundPattern
+        mov ecx, [ebx].PATTERN.PatType
+        .IF eax == bFoundPattern && ecx == dwPatType
             mov eax, [ebx].PATTERN.PatAddress
             mov dwPatternAddress, eax
             mov eax, [ebx].PATTERN.PatName
             mov lpszPatternName, eax
-            .IF bFoundPattern == TRUE
+            .IF bFoundPattern == TRUE && dwPatType != 2
                 Invoke LogMessage, lpszPatternName, LOG_NONEWLINE, 1
                 Invoke LogMessageAndHexValue, 0, dwPatternAddress
             .ELSE
-                Invoke LogMessage, lpszPatternName, LOG_STANDARD, 1
+                .IF dwPatType == 2
+                    Invoke LogMessage, lpszPatternName, LOG_NONEWLINE, 1
+                    Invoke LogMessage, Addr szType2Pattern, LOG_STANDARD, 0
+                .ELSE
+                    Invoke LogMessage, lpszPatternName, LOG_STANDARD, 1
+                .ENDIF
             .ENDIF
         .ENDIF
         add ptrCurrentPattern, SIZEOF PATTERN
@@ -1958,11 +2181,15 @@ EEEX_ALIGN
 ; EEexWriteAddressesToIni - Write pattern functions or globals addresses to ini
 ; Returns: None
 ;------------------------------------------------------------------------------
-EEexWriteAddressesToIni PROC
+EEexWriteAddressesToIni PROC USES EBX
     LOCAL nPattern:DWORD
     LOCAL ptrCurrentPattern:DWORD
     LOCAL lpszPatternName:DWORD
     LOCAL dwPatternAddress:DWORD
+    LOCAL pType2Array:DWORD
+    LOCAL pCurrentType2Entry:DWORD
+    LOCAL nTotal:DWORD
+    LOCAL nCount:DWORD
 
     mov ebx, PatternsDatabase
     mov ptrCurrentPattern, ebx
@@ -1970,11 +2197,53 @@ EEexWriteAddressesToIni PROC
     mov eax, 0
     .WHILE eax < TotalPatterns
         .IF [ebx].PATTERN.bFound == TRUE
-            mov eax, [ebx].PATTERN.PatAddress
-            mov dwPatternAddress, eax
-            mov eax, [ebx].PATTERN.PatName
-            mov lpszPatternName, eax
-            Invoke IniWriteValue, Addr szIniEEex, lpszPatternName, dwPatternAddress
+            .IF [ebx].PATTERN.PatType == 2
+                ;--------------------------------------------------------------
+                ; Handle type 2 patterns
+                ;--------------------------------------------------------------            
+                mov eax, [ebx].PATTERN.PatName
+                mov lpszPatternName, eax
+                ; clear any previous existing section
+                Invoke IniClearSection, lpszPatternName
+                
+                mov ebx, ptrCurrentPattern
+                mov eax, [ebx].PATTERN.PatAddress
+                .IF eax != 0 ; array location?
+                    mov pType2Array, eax
+                    mov pCurrentType2Entry, eax
+                    mov eax, [ebx].PATTERN.VerAdj
+                    mov nTotal, eax
+                    
+                    ; Write Count= to section name
+                    Invoke IniSetType2Count, lpszPatternName, nTotal
+                    
+                    ; Loop through pType2Array and get each address and write to ini file
+                    ; 1=0x1234ABCD, 2=0xABCD1234 etc
+                    mov ebx, pCurrentType2Entry
+                    mov nCount, 0
+                    mov eax, 0
+                    .WHILE eax < nTotal
+                        mov eax, [ebx]
+                        mov dwPatternAddress, eax
+                        Invoke EEexDwordToAscii, nCount, Addr szIniEnumString ; convert n integer to string 'n'
+                        Invoke IniWriteValue, lpszPatternName, Addr szIniEnumString, dwPatternAddress ; n=0x1234ABCD
+                        add pCurrentType2Entry, SIZEOF DWORD
+                        mov ebx, pCurrentType2Entry
+                        inc nCount
+                        mov eax, nCount
+                    .ENDW
+
+                .ENDIF
+            .ELSE
+                ;--------------------------------------------------------------
+                ; Handle all other patterns
+                ;--------------------------------------------------------------  
+                mov eax, [ebx].PATTERN.PatAddress
+                mov dwPatternAddress, eax
+                mov eax, [ebx].PATTERN.PatName
+                mov lpszPatternName, eax
+                Invoke IniWriteValue, Addr szIniEEex, lpszPatternName, dwPatternAddress
+            .ENDIF
         .ENDIF
         add ptrCurrentPattern, SIZEOF PATTERN
         mov ebx, ptrCurrentPattern

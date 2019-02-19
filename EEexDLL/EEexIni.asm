@@ -14,6 +14,7 @@ includelib advapi32.lib
 ; Core ini functions:
 IniReadValue            PROTO :DWORD,:DWORD,:DWORD    ; lpszSection, lpszKeyname, dwDefaultValue
 IniWriteValue           PROTO :DWORD,:DWORD,:DWORD    ; lpszSection, lpszKeyname, dwValue
+IniClearSection         PROTO :DWORD                  ; lpszSection
 
 ; External pattern database ini functions:
 IniGetPatternNames      PROTO                         ;
@@ -23,6 +24,7 @@ IniGetVerBytesText      PROTO :DWORD,:DWORD           ; lpszPatternName, lpdwVer
 IniGetPatAdj            PROTO :DWORD                  ; lpszPatternName
 IniGetVerAdj            PROTO :DWORD                  ; lpszPatternName
 IniGetPatType           PROTO :DWORD                  ; lpszPatternName
+IniSetType2Count        PROTO :DWORD,:DWORD           ; lpszPatternName, dwValue
 
 ; Internal ini functions:
 IniValueToString        TEXTEQU <EEexDwordToAscii>    ; dwValue:DWORD, lpszAsciiString (EEexDwordToAscii is in EEex.asm)
@@ -98,6 +100,11 @@ szIniVerAdj             DB "VerAdj",0
 szIniPatType            DB "Type",0
 
 ;---------------------------
+; [Pattern] type 2 strings for EEex.ini
+;---------------------------
+szIniCount              DB "Count",0
+
+;---------------------------
 ; Pattern names position
 ;---------------------------
 IniNextPatternNamePos   DD 0 ; Used by IniGetNextPatternName to get string pos of szIniSectionNames
@@ -105,6 +112,7 @@ IniNextPatternNamePos   DD 0 ; Used by IniGetNextPatternName to get string pos o
 ;---------------------------
 ; Ini Buffers
 ;---------------------------
+szIniEnumString         DB 32 DUP (0) ; type 2 enum string for EEex.ini: 1=0x1234ABCD etc
 szIniValueString        DB 32 DUP (0)
 szIniString             DB 32 DUP (0)
 szIniLargeString        DB INI_LARGESTRING DUP (0)
@@ -196,6 +204,15 @@ IniWriteValue PROC lpszSection:DWORD, lpszKeyname:DWORD, dwValue:DWORD
     .ENDIF
     ret
 IniWriteValue ENDP
+
+EEEX_ALIGN
+;------------------------------------------------------------------------------
+; Clear a section in the EEex.ini file
+;------------------------------------------------------------------------------
+IniClearSection PROC lpszSection:DWORD
+    Invoke WritePrivateProfileString, lpszSection, NULL, NULL, Addr EEexIniFile
+    ret
+IniClearSection ENDP
 
 
 
@@ -362,7 +379,19 @@ IniGetPatType PROC lpszPatternName:DWORD
     ret
 IniGetPatType ENDP
 
-
+EEEX_ALIGN
+;------------------------------------------------------------------------------
+; Writes count of type 2 pattern array entries to [<PatternName>] section
+;------------------------------------------------------------------------------
+IniSetType2Count PROC lpszPatternName:DWORD, dwValue:DWORD
+    .IF dwValue == 0
+        Invoke WritePrivateProfileString, lpszPatternName, Addr szIniCount, Addr szIniValueZero, Addr EEexIniFile
+    .ELSE
+        Invoke IniValueToString, dwValue, Addr szIniValueString
+        Invoke WritePrivateProfileString, lpszPatternName, Addr szIniCount, Addr szIniValueString, Addr EEexIniFile
+    .ENDIF
+    ret
+IniSetType2Count ENDP
 
 
 ;==============================================================================

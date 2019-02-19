@@ -58,6 +58,9 @@ IMP_ERR_VERBYTES_ALLOC  EQU -6 ; Could not allocate memory for VerBytes conversi
 IMP_ERR_PATBYTES_NOTHEX EQU -7 ; Non hex characters found in PatBytes pattern hex text chars (allowed: 0-9,a-z,A-Z and space)
 IMP_ERR_VERBYTES_NOTHEX EQU -8 ; Non hex characters found in VerBytes pattern hex text chars (allowed: 0-9,a-z,A-Z and space)
 
+TYPE2_ARRAY_INITIAL_COUNT EQU 64
+TYPE2_ARRAY_INITIAL_SIZE EQU (TYPE2_ARRAY_INITIAL_COUNT * SIZEOF DWORD)
+
 
 .DATA
 ;---------------------------

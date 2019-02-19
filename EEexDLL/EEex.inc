@@ -29,6 +29,7 @@ EEexInitDll             PROTO                            ;
 EEexInitGlobals         PROTO                            ;
 EEexImportPatterns      PROTO                            ;
 EEexVerifyPatterns      PROTO                            ;
+EEexVerifyType2Patterns PROTO                            ;
 EEexSearchPatterns      PROTO                            ;
 
 EEexPatchLocation       PROTO                            ;
@@ -38,7 +39,7 @@ EEexGameGlobals         PROTO                            ;
 
 EEexLogInformation      PROTO :DWORD                     ; dwType
 EEexLogImportPatterns   PROTO :DWORD                     ; bImportError
-EEexLogPatterns         PROTO :DWORD                     ; bFoundPattern
+EEexLogPatterns         PROTO :DWORD,:DWORD              ; bFoundPattern, dwPatType
 EEexEEFileInformation   PROTO                            ;
 EEexEEGameInformation   PROTO                            ;
 EEexWriteAddressesToIni PROTO                            ;
@@ -146,7 +147,7 @@ szPatternsOutOf         DB " out of ",0
 szPatterns              DB " patterns",0
 szPattern               DB "Pattern",0
 szPatDB                 DB "db",0,0
-
+szType2Pattern          DB " (Pattern Type 2)",0
 
 ;---------------------------
 ; Functions/globals names:
