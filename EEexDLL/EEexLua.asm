@@ -557,7 +557,9 @@ EEex_AddressList PROC C USES EBX lua_State:DWORD
                         mov eax, [ebx]
                         mov dwPatternAddress, eax
                         
+                        inc nCount ; for lua 1 based indexes
                         fild nCount
+                        dec nCount ; restore nCount to its proper value for loop condition
                         fstp qword ptr [qwIndex]
                         Invoke F_Lua_pushnumber, lua_State, qwIndex
                         fild dwPatternAddress
