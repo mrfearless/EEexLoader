@@ -39,7 +39,7 @@ EEexGameGlobals         PROTO                            ;
 
 EEexLogInformation      PROTO :DWORD                     ; dwType
 EEexLogImportPatterns   PROTO :DWORD                     ; bImportError
-EEexLogPatterns         PROTO :DWORD,:DWORD              ; bFoundPattern, dwPatType
+EEexLogPatterns         PROTO :DWORD                     ; bFoundPattern
 EEexEEFileInformation   PROTO                            ;
 EEexEEGameInformation   PROTO                            ;
 EEexWriteAddressesToIni PROTO                            ;

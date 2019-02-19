@@ -748,9 +748,9 @@ EEexVerifyPatterns PROC USES EBX
         .IF eax == 0 || [ebx].PATTERN.PatType == 2 ;|| eax > dwAddressMax ; just in case
             .IF [ebx].PATTERN.PatType == 2
                 inc SkippedVerifyPatterns ; verify type 2 patterns elsewhere
-            .ELSE
-                inc NotVerifiedPatterns
             .ENDIF
+            inc NotVerifiedPatterns
+            
             add ptrCurrentPattern, SIZEOF PATTERN
             mov ebx, ptrCurrentPattern
             inc nPattern
@@ -829,15 +829,19 @@ EEexVerifyPatterns PROC USES EBX
         inc nPattern
         mov eax, nPattern
     .ENDW
-
+    
+    ;PrintDec VerifiedPatterns
+    ;PrintDec SkippedVerifyPatterns
+    ;PrintDec TotalPatterns
+    
     mov eax, VerifiedPatterns
     add eax, SkippedVerifyPatterns
     .IF eax == TotalPatterns && TotalPatterns != 0
-        .IF SkippedVerifyPatterns > 0
+        ;.IF SkippedVerifyPatterns > 0
             Invoke EEexVerifyType2Patterns ; check and verify for type 2 patterns
-        .ELSE
-            mov eax, TRUE
-        .ENDIF    
+        ;.ELSE
+        ;    mov eax, TRUE
+        ;.ENDIF    
     .ELSE
         mov eax, FALSE
     .ENDIF
@@ -952,10 +956,11 @@ EEexVerifyType2Patterns PROC USES EBX
                         mov [ebx].PATTERN.bFound, TRUE
                         mov eax, pType2Array
                         mov [ebx].PATTERN.PatAddress, eax ; array of these addresses are stored in PatAddress field
-                        .IF SkippedVerifyPatterns > 0
-                            dec SkippedVerifyPatterns
-                            inc VerifiedPatterns
+                        .IF NotVerifiedPatterns > 0
+                            ;dec SkippedVerifyPatterns
+                            dec NotVerifiedPatterns
                         .ENDIF
+                        inc VerifiedPatterns
                         
                     .ELSE ; broke out early coz we had a 0 address for one of the keys in the type2 pattern section in EEex.ini
                         mov [ebx].PATTERN.bFound, FALSE
@@ -969,6 +974,7 @@ EEexVerifyType2Patterns PROC USES EBX
                 .ENDIF
             .ELSE
                 ; nothing to verify, first run of type2 pattern?
+                mov RetVal, FALSE
             .ENDIF
         .ENDIF
     
@@ -1092,6 +1098,7 @@ EEexSearchPatterns PROC USES EBX ESI
                                         
                                         mov eax, [ebx].PATTERN.VerAdj
                                         mov nCount, eax
+                                        inc eax
                                         and eax, 63d ; nCount mod 64 - realloc mem if nCount mod 64 == 0
                                         .IF eax == 0 ; time to realloc. Every 64 entries we had another 64
                                             IFDEF DEBUG32
@@ -1778,17 +1785,13 @@ EEexLogInformation PROC dwType:DWORD
         .IF gEEexLog >= LOGLEVEL_DETAIL
             .IF NotVerifiedPatterns > 0
                 Invoke LogMessage, CTEXT("Patterns Not Verified:"), LOG_STANDARD, 0
-                Invoke EEexLogPatterns, FALSE, 0
-                Invoke EEexLogPatterns, FALSE, 1
-                Invoke EEexLogPatterns, FALSE, 2
+                Invoke EEexLogPatterns, FALSE
                 Invoke LogMessage, 0, LOG_CRLF, 0
             .ENDIF
             mov eax, VerifiedPatterns ; show list of patterns if some verified
             .IF eax != TotalPatterns && TotalPatterns != 0 ; coz we skip searching, otherwise none shown
                 Invoke LogMessage, CTEXT("Patterns Verified:"), LOG_STANDARD, 0
-                Invoke EEexLogPatterns, TRUE, 0
-                Invoke EEexLogPatterns, TRUE, 1
-                Invoke EEexLogPatterns, TRUE, 2
+                Invoke EEexLogPatterns, TRUE
                 Invoke LogMessage, 0, LOG_CRLF, 0
             .ENDIF
         .ENDIF
@@ -1833,15 +1836,11 @@ EEexLogInformation PROC dwType:DWORD
             .IF dwType == INFO_SEARCHED
                 Invoke LogMessage, CTEXT("Patterns Found:"), LOG_STANDARD, 0
             .ENDIF
-            Invoke EEexLogPatterns, TRUE, 0
-            Invoke EEexLogPatterns, TRUE, 1
-            Invoke EEexLogPatterns, TRUE, 2
+            Invoke EEexLogPatterns, TRUE
             Invoke LogMessage, 0, LOG_CRLF, 0
             .IF NotFoundPatterns > 0
                 Invoke LogMessage, CTEXT("Patterns Not Found:"), LOG_STANDARD, 0
-                Invoke EEexLogPatterns, FALSE, 0
-                Invoke EEexLogPatterns, FALSE, 1
-                Invoke EEexLogPatterns, FALSE, 2
+                Invoke EEexLogPatterns, FALSE
                 Invoke LogMessage, 0, LOG_CRLF, 0
             .ENDIF
         .ENDIF
@@ -1850,9 +1849,7 @@ EEexLogInformation PROC dwType:DWORD
     .IF dwType == INFO_ADDRESSES
         .IF gEEexLog > LOGLEVEL_NONE
             Invoke LogMessage, CTEXT("Address List:"), LOG_INFO, 0
-            Invoke EEexLogPatterns, TRUE, 0
-            Invoke EEexLogPatterns, TRUE, 1
-            Invoke EEexLogPatterns, TRUE, 2
+            Invoke EEexLogPatterns, TRUE
             
             ; Handle extras like GetProcAddress, LoadLibrary etc
             Invoke LogMessage, Addr szGetProcAddress, LOG_NONEWLINE, 1
@@ -1944,20 +1941,22 @@ EEEX_ALIGN
 ; Called from EEexLogInformation
 ; Returns: None
 ;------------------------------------------------------------------------------
-EEexLogPatterns PROC USES EBX ECX bFoundPattern:DWORD, dwPatType:DWORD
+EEexLogPatterns PROC USES EBX bFoundPattern:DWORD
     LOCAL nPattern:DWORD
     LOCAL ptrCurrentPattern:DWORD
     LOCAL lpszPatternName:DWORD
     LOCAL dwPatternAddress:DWORD
+    LOCAL dwPatType:DWORD
 
     mov ebx, PatternsDatabase
     mov ptrCurrentPattern, ebx
     mov nPattern, 0
     mov eax, 0
     .WHILE eax < TotalPatterns
+        mov eax, [ebx].PATTERN.PatType
+        mov dwPatType, eax
         mov eax, [ebx].PATTERN.bFound
-        mov ecx, [ebx].PATTERN.PatType
-        .IF eax == bFoundPattern && ecx == dwPatType
+        .IF eax == bFoundPattern
             mov eax, [ebx].PATTERN.PatAddress
             mov dwPatternAddress, eax
             mov eax, [ebx].PATTERN.PatName
@@ -1979,7 +1978,7 @@ EEexLogPatterns PROC USES EBX ECX bFoundPattern:DWORD, dwPatType:DWORD
         inc nPattern
         mov eax, nPattern
     .ENDW
-     ret
+    ret
 EEexLogPatterns ENDP
 
 

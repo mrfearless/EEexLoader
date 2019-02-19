@@ -28,8 +28,8 @@ EEex_ExposeToLua        PROTO C :VARARG         ; (lua_State), FunctionAddress, 
 EEex_Call               PROTO C :VARARG         ; (lua_State)
 
 EEex_AddressList        PROTO C :DWORD          ; (lua_State)
-EEex_AddressListAsm     PROTO C :DWORD          ; (lua_State)
-EEex_AddressListCount   PROTO C :DWORD          ; (lua_State)
+;EEex_AddressListAsm    PROTO C :DWORD          ; (lua_State)
+;EEex_AddressListCount  PROTO C :DWORD          ; (lua_State)
 
 IFDEF EEEX_LUALIB       ; use this internal one rather than static version as it crashes
 lua_setglobalx          PROTO C :DWORD, :DWORD  ; (lua_State), Name
@@ -57,9 +57,9 @@ szEEex_WriteByte        DB "EEex_WriteByte",0
 szEEex_ExposeToLua      DB "EEex_ExposeToLua",0
 szEEex_Call             DB "EEex_Call",0
 szEEex_AddressList      DB "EEex_AddressList",0
-szEEex_AddressListAsm   DB "EEex_AddressListAsm",0
-szEEex_AddressListCount DB "EEex_AddressListCount",0
-szEEex_LuaAddressList   DB "LuaAddressList",0
+;szEEex_AddressListAsm   DB "EEex_AddressListAsm",0
+;szEEex_AddressListCount DB "EEex_AddressListCount",0
+;szEEex_LuaAddressList   DB "LuaAddressList",0
 
 pAddressList            DD 0 ; points to array of ALENTRY entries x TotalPatterns 
 
@@ -207,21 +207,21 @@ EEex_Init PROC C arg:VARARG
     .ENDIF
     ENDIF
     
-    Invoke EEexLuaRegisterFunction, Addr EEex_AddressListAsm, Addr szEEex_AddressListAsm
-    IFDEF EEEX_LOGGING
-    .IF gEEexLog >= LOGLEVEL_DEBUG
-        Invoke LogMessage, CTEXT("Register Function -  EEex_AddressListAsm"), LOG_NONEWLINE, 1
-        Invoke LogMessageAndHexValue, 0, Addr EEex_AddressListAsm
-    .ENDIF
-    ENDIF    
-    
-    Invoke EEexLuaRegisterFunction, Addr EEex_AddressListCount, Addr szEEex_AddressListCount
-    IFDEF EEEX_LOGGING
-    .IF gEEexLog >= LOGLEVEL_DEBUG
-        Invoke LogMessage, CTEXT("Register Function -  EEex_AddressListCount"), LOG_NONEWLINE, 1
-        Invoke LogMessageAndHexValue, 0, Addr EEex_AddressListCount
-    .ENDIF
-    ENDIF      
+;    Invoke EEexLuaRegisterFunction, Addr EEex_AddressListAsm, Addr szEEex_AddressListAsm
+;    IFDEF EEEX_LOGGING
+;    .IF gEEexLog >= LOGLEVEL_DEBUG
+;        Invoke LogMessage, CTEXT("Register Function -  EEex_AddressListAsm"), LOG_NONEWLINE, 1
+;        Invoke LogMessageAndHexValue, 0, Addr EEex_AddressListAsm
+;    .ENDIF
+;    ENDIF    
+;    
+;    Invoke EEexLuaRegisterFunction, Addr EEex_AddressListCount, Addr szEEex_AddressListCount
+;    IFDEF EEEX_LOGGING
+;    .IF gEEexLog >= LOGLEVEL_DEBUG
+;        Invoke LogMessage, CTEXT("Register Function -  EEex_AddressListCount"), LOG_NONEWLINE, 1
+;        Invoke LogMessageAndHexValue, 0, Addr EEex_AddressListCount
+;    .ENDIF
+;    ENDIF      
 
     IFDEF EEEX_LOGGING
     .IF gEEexLog >= LOGLEVEL_DEBUG
@@ -509,7 +509,12 @@ EEex_AddressList PROC C USES EBX lua_State:DWORD
     LOCAL ptrCurrentPattern:DWORD
     LOCAL lpszPatternName:DWORD
     LOCAL dwPatternAddress:DWORD
+    LOCAL nTotal:DWORD
+    LOCAL nCount:DWORD
+    LOCAL pT2Array:DWORD
+    LOCAL pT2Entry:DWORD
     LOCAL qwAddress:QWORD
+    LOCAL qwIndex:QWORD
     
     IFDEF EEEX_LOGGING
     IFDEF EEEX_LOGLUACALLS
@@ -519,7 +524,9 @@ EEex_AddressList PROC C USES EBX lua_State:DWORD
     ENDIF
     ENDIF
     
-    Invoke F_Lua_createtablex, lua_State
+    mov eax, TotalPatterns
+    add eax, 3 ; for extra at end
+    Invoke F_Lua_createtable, lua_State, 0, eax
 
     mov ebx, PatternsDatabase
     mov ptrCurrentPattern, ebx
@@ -527,16 +534,57 @@ EEex_AddressList PROC C USES EBX lua_State:DWORD
     mov eax, 0
     .WHILE eax < TotalPatterns
         .IF [ebx].PATTERN.bFound == TRUE
-            mov eax, [ebx].PATTERN.PatAddress
-            mov dwPatternAddress, eax
             mov eax, [ebx].PATTERN.PatName
             mov lpszPatternName, eax
             
-            Invoke F_Lua_pushstring, lua_State, lpszPatternName
-            fild dwPatternAddress
-            fstp qword ptr [qwAddress]            
-            Invoke F_Lua_pushnumber, lua_State, qwAddress ; dwPatternAddress
-            Invoke F_Lua_settable, lua_State, -3
+            .IF [ebx].PATTERN.PatType == 2
+                ;--------------------------------------------------------------
+                ; Handle type 2 pattern: name=table/array of addresses
+                ;--------------------------------------------------------------
+                mov eax, [ebx].PATTERN.VerAdj ; used to store count of array entries
+                mov nTotal, eax
+                mov eax, [ebx].PATTERN.PatAddress ; used to store pointer to array
+                .IF eax != NULL && nTotal != 0
+                    mov pT2Array, eax
+                    mov pT2Entry, eax
+                    
+                    Invoke F_Lua_pushstring, lua_State, lpszPatternName
+                    Invoke F_Lua_createtable, lua_State, 0, nCount
+                    mov nCount, 0
+                    mov eax, 0
+                    .WHILE eax < nTotal
+                        mov ebx, pT2Entry
+                        mov eax, [ebx]
+                        mov dwPatternAddress, eax
+                        
+                        fild nCount
+                        fstp qword ptr [qwIndex]
+                        Invoke F_Lua_pushnumber, lua_State, qwIndex
+                        fild dwPatternAddress
+                        fstp qword ptr [qwAddress]            
+                        Invoke F_Lua_pushnumber, lua_State, qwAddress ; dwPatternAddress
+                        Invoke F_Lua_settable, lua_State, -3
+                        
+                        add pT2Entry, SIZEOF DWORD
+                        inc nCount
+                        mov eax, nCount
+                    .ENDW
+                    Invoke F_Lua_settable, lua_State, -3
+                    
+                .ENDIF
+                
+            .ELSE
+                ;--------------------------------------------------------------
+                ; Handle all other pattern types: name=address
+                ;--------------------------------------------------------------
+                mov eax, [ebx].PATTERN.PatAddress
+                mov dwPatternAddress, eax
+                Invoke F_Lua_pushstring, lua_State, lpszPatternName
+                fild dwPatternAddress
+                fstp qword ptr [qwAddress]            
+                Invoke F_Lua_pushnumber, lua_State, qwAddress ; dwPatternAddress
+                Invoke F_Lua_settable, lua_State, -3
+            .ENDIF
             
         .ENDIF
         add ptrCurrentPattern, SIZEOF PATTERN
@@ -544,7 +592,7 @@ EEex_AddressList PROC C USES EBX lua_State:DWORD
         inc nPattern
         mov eax, nPattern
     .ENDW
-    
+
     ; handle special cases, like GetProcAddress, LoadLibrary etc
     Invoke F_Lua_pushstring, lua_State, Addr szGetProcAddress
     fild F_GetProcAddress
@@ -580,75 +628,75 @@ EEEX_ALIGN
 ; Returns: pointer to address list array or 0 if fail
 ;------------------------------------------------------------------------------
 EEex_AddressListAsm PROC C USES EBX EDX lua_State:DWORD
-    LOCAL nPattern:DWORD
-    LOCAL ptrCurrentPattern:DWORD
-    LOCAL ptrCurrentALEntry:DWORD
-    LOCAL lpszPatternName:DWORD
-    LOCAL dwPatternAddress:DWORD
-    LOCAL qwAddress:QWORD
-    
-    ;--------------------------------------------------------------------------
-    ; Create pAddressList if it doesnt exist, otherwise return address of it
-    ;--------------------------------------------------------------------------
-    .IF pAddressList == 0 
-        mov eax, TotalPatterns
-        add eax, 4 ; 3 extras + one last entry, which will be null - in case not using count
-        mov ebx, SIZEOF ALENTRY
-        mul ebx
-        Invoke GlobalAlloc, GMEM_FIXED or GMEM_ZEROINIT, eax
-        .IF eax == NULL
-            ret
-        .ENDIF
-        mov pAddressList, eax
-        mov ptrCurrentALEntry, eax
-        mov edx, eax
-
-        mov ebx, PatternsDatabase
-        mov ptrCurrentPattern, ebx
-        mov nPattern, 0
-        mov eax, 0
-        .WHILE eax < TotalPatterns
-            .IF [ebx].PATTERN.bFound == TRUE
-                ; copy pointer to name and address from 
-                ; current PATTERN entry to ALENTRY entry
-                mov eax, [ebx].PATTERN.PatName
-                mov [edx].ALENTRY.lpszName, eax
-                mov eax, [ebx].PATTERN.PatAddress
-                mov [edx].ALENTRY.dwAddress, eax                
-            .ENDIF
-            add ptrCurrentALEntry, SIZEOF ALENTRY
-            add ptrCurrentPattern, SIZEOF PATTERN
-            mov ebx, ptrCurrentPattern
-            mov edx, ptrCurrentALEntry
-            inc nPattern
-            mov eax, nPattern
-        .ENDW        
-    .ENDIF
-    
-    ; Handle extras like GetProcAddress, LoadLibrary etc
-    lea eax, szGetProcAddress
-    mov [edx].ALENTRY.lpszName, eax
-    mov eax, F_GetProcAddress
-    mov [edx].ALENTRY.dwAddress, eax
-    add edx, SIZEOF ALENTRY
-    
-    lea eax, szLoadLibrary
-    mov [edx].ALENTRY.lpszName, eax
-    mov eax, F_LoadLibrary
-    mov [edx].ALENTRY.dwAddress, eax
-    add edx, SIZEOF ALENTRY
-    
-    lea eax, szSDL_Free
-    mov [edx].ALENTRY.lpszName, eax
-    mov eax, F_SDL_free
-    mov [edx].ALENTRY.dwAddress, eax
- 
-    ;mov eax, pAddressList
-    fild pAddressList
-    fstp qword ptr [qwAddress]
-    Invoke F_Lua_pushnumber, lua_State, qwAddress
-    
-    mov eax, 1
+;    LOCAL nPattern:DWORD
+;    LOCAL ptrCurrentPattern:DWORD
+;    LOCAL ptrCurrentALEntry:DWORD
+;    LOCAL lpszPatternName:DWORD
+;    LOCAL dwPatternAddress:DWORD
+;    LOCAL qwAddress:QWORD
+;    
+;    ;--------------------------------------------------------------------------
+;    ; Create pAddressList if it doesnt exist, otherwise return address of it
+;    ;--------------------------------------------------------------------------
+;    .IF pAddressList == 0 
+;        mov eax, TotalPatterns
+;        add eax, 4 ; 3 extras + one last entry, which will be null - in case not using count
+;        mov ebx, SIZEOF ALENTRY
+;        mul ebx
+;        Invoke GlobalAlloc, GMEM_FIXED or GMEM_ZEROINIT, eax
+;        .IF eax == NULL
+;            ret
+;        .ENDIF
+;        mov pAddressList, eax
+;        mov ptrCurrentALEntry, eax
+;        mov edx, eax
+;
+;        mov ebx, PatternsDatabase
+;        mov ptrCurrentPattern, ebx
+;        mov nPattern, 0
+;        mov eax, 0
+;        .WHILE eax < TotalPatterns
+;            .IF [ebx].PATTERN.bFound == TRUE
+;                ; copy pointer to name and address from 
+;                ; current PATTERN entry to ALENTRY entry
+;                mov eax, [ebx].PATTERN.PatName
+;                mov [edx].ALENTRY.lpszName, eax
+;                mov eax, [ebx].PATTERN.PatAddress
+;                mov [edx].ALENTRY.dwAddress, eax                
+;            .ENDIF
+;            add ptrCurrentALEntry, SIZEOF ALENTRY
+;            add ptrCurrentPattern, SIZEOF PATTERN
+;            mov ebx, ptrCurrentPattern
+;            mov edx, ptrCurrentALEntry
+;            inc nPattern
+;            mov eax, nPattern
+;        .ENDW        
+;    .ENDIF
+;    
+;    ; Handle extras like GetProcAddress, LoadLibrary etc
+;    lea eax, szGetProcAddress
+;    mov [edx].ALENTRY.lpszName, eax
+;    mov eax, F_GetProcAddress
+;    mov [edx].ALENTRY.dwAddress, eax
+;    add edx, SIZEOF ALENTRY
+;    
+;    lea eax, szLoadLibrary
+;    mov [edx].ALENTRY.lpszName, eax
+;    mov eax, F_LoadLibrary
+;    mov [edx].ALENTRY.dwAddress, eax
+;    add edx, SIZEOF ALENTRY
+;    
+;    lea eax, szSDL_Free
+;    mov [edx].ALENTRY.lpszName, eax
+;    mov eax, F_SDL_free
+;    mov [edx].ALENTRY.dwAddress, eax
+; 
+;    ;mov eax, pAddressList
+;    fild pAddressList
+;    fstp qword ptr [qwAddress]
+;    Invoke F_Lua_pushnumber, lua_State, qwAddress
+;    
+;    mov eax, 1
     ret
 EEex_AddressListAsm ENDP
 
@@ -660,17 +708,17 @@ EEEX_ALIGN
 ; EEex_AddressListCountAsm()
 ;------------------------------------------------------------------------------
 EEex_AddressListCount PROC C lua_State:DWORD
-    LOCAL dwCount:DWORD
-    LOCAL qwAddress:QWORD
-    
-    mov eax, TotalPatterns
-    add eax, 3 ; for extra patterns: GetProcAddress, LoadLibrary etc
-    mov dwCount, eax
-    fild dwCount
-    fstp qword ptr [qwAddress]
-    Invoke F_Lua_pushnumber, lua_State, qwAddress
-    
-    mov eax, 1
+;    LOCAL dwCount:DWORD
+;    LOCAL qwAddress:QWORD
+;    
+;    mov eax, TotalPatterns
+;    add eax, 3 ; for extra patterns: GetProcAddress, LoadLibrary etc
+;    mov dwCount, eax
+;    fild dwCount
+;    fstp qword ptr [qwAddress]
+;    Invoke F_Lua_pushnumber, lua_State, qwAddress
+;    
+;    mov eax, 1
     ret
 EEex_AddressListCount ENDP
 
