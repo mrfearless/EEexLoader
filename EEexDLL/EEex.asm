@@ -313,7 +313,7 @@ EEexInitDll PROC USES EBX
     ;--------------------------------------------------------------------------
 
     Invoke EEexFunctionAddresses ; get function address for lua functions etc
-    Invoke EEexGameGlobals ; get pointers to game globals
+    Invoke EEexVariableValues ; get pointers to game globals
     Invoke EEexLogInformation, INFO_ADDRESSES ; lists function and resolved global addresses
 
     ;--------------------------------------------------------------------------
@@ -1574,18 +1574,19 @@ EEexApplyCallPatch ENDP
 
 EEEX_ALIGN
 ;------------------------------------------------------------------------------
-; Process game global variables - obtain pointers to the game globals from
-; pattern addresses verified or searched for. Only need g_lua really 
+; EEexVariableValues - Process game global variables and other variables - 
+; Type 1, 3 and 4 patterns. Read byte, word or dword value at pattern address 
+; p_lua ("_g_lua") is used internally in lua function calls in EEexLua.asm 
 ; Returns: none
 ;------------------------------------------------------------------------------
-EEexGameGlobals PROC USES EBX
+EEexVariableValues PROC USES EBX
     LOCAL nPattern:DWORD
     LOCAL ptrCurrentPattern:DWORD
     LOCAL lpszPatternName:DWORD
     LOCAL dwPatternAddress:DWORD
 
     IFDEF DEBUG32
-    PrintText 'EEexGameGlobals'
+    PrintText 'EEexVariableValues'
     ENDIF  
 
     mov ebx, PatternsDatabase
@@ -1593,9 +1594,15 @@ EEexGameGlobals PROC USES EBX
     mov nPattern, 0
     mov eax, 0
     .WHILE eax < TotalPatterns
-        .IF [ebx].PATTERN.bFound == TRUE && [ebx].PATTERN.PatType == 1
+        .IF [ebx].PATTERN.bFound == TRUE && [ebx].PATTERN.PatType == 1 ; read dword
             mov eax, [ebx].PATTERN.PatAddress
+            .IF eax != 0
+                mov ebx, ptrCurrentPattern
+                mov eax, [eax]
+                mov [ebx].PATTERN.PatAddress, eax
+            .ENDIF
             mov dwPatternAddress, eax
+            
             mov eax, [ebx].PATTERN.PatName
             mov lpszPatternName, eax
             
@@ -1610,15 +1617,24 @@ EEexGameGlobals PROC USES EBX
                     mov p_lua, eax
                 .ENDIF
             .ENDIF
-            
-            ; update type 1 pattern - a game global variable to point to actual content
-            mov eax, dwPatternAddress
+        
+        .ELSEIF [ebx].PATTERN.bFound == TRUE && [ebx].PATTERN.PatType == 3 ; read byte
+            mov eax, [ebx].PATTERN.PatAddress
             .IF eax != 0
                 mov ebx, ptrCurrentPattern
-                mov eax, [eax]
+                movzx eax, byte ptr [eax]
                 mov [ebx].PATTERN.PatAddress, eax
             .ENDIF
-
+            
+        .ELSEIF [ebx].PATTERN.bFound == TRUE && [ebx].PATTERN.PatType == 4 ; read word
+            mov eax, [ebx].PATTERN.PatAddress
+            mov dwPatternAddress, eax
+            .IF eax != 0
+                mov ebx, ptrCurrentPattern
+                movzx eax, word ptr [eax]
+                mov [ebx].PATTERN.PatAddress, eax
+            .ENDIF
+            
         .ENDIF
         add ptrCurrentPattern, SIZEOF PATTERN
         mov ebx, ptrCurrentPattern
@@ -1627,7 +1643,7 @@ EEexGameGlobals PROC USES EBX
     .ENDW
 
     ret
-EEexGameGlobals ENDP
+EEexVariableValues ENDP
 
 
 EEEX_ALIGN

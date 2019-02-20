@@ -577,7 +577,7 @@ EEex_AddressList PROC C USES EBX lua_State:DWORD
                 
             .ELSE
                 ;--------------------------------------------------------------
-                ; Handle all other pattern types: name=address
+                ; Handle all other pattern types: name=address / var=value
                 ;--------------------------------------------------------------
                 mov eax, [ebx].PATTERN.PatAddress
                 mov dwPatternAddress, eax

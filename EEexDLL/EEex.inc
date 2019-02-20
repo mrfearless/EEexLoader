@@ -35,7 +35,7 @@ EEexSearchPatterns      PROTO                            ;
 EEexPatchLocation       PROTO                            ;
 EEexFunctionAddresses   PROTO                            ;
 EEexApplyCallPatch      PROTO :DWORD                     ; dwAddressToPatch
-EEexGameGlobals         PROTO                            ;
+EEexVariableValues      PROTO                            ;
 
 EEexLogInformation      PROTO :DWORD                     ; dwType
 EEexLogImportPatterns   PROTO :DWORD                     ; bImportError

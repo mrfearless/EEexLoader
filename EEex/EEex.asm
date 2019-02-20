@@ -634,7 +634,6 @@ CheckFileVersion PROC USES EBX szVersionFile:DWORD, szVersion:DWORD
 CheckFileVersion endp
 ENDIF
 
-
 end start
 
 
