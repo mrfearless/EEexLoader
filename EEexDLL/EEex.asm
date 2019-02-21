@@ -1596,13 +1596,7 @@ EEexVariableValues PROC USES EBX
     .WHILE eax < TotalPatterns
         .IF [ebx].PATTERN.bFound == TRUE && [ebx].PATTERN.PatType == 1 ; read dword
             mov eax, [ebx].PATTERN.PatAddress
-            .IF eax != 0
-                mov ebx, ptrCurrentPattern
-                mov eax, [eax]
-                mov [ebx].PATTERN.PatAddress, eax
-            .ENDIF
             mov dwPatternAddress, eax
-            
             mov eax, [ebx].PATTERN.PatName
             mov lpszPatternName, eax
             
@@ -1616,6 +1610,14 @@ EEexVariableValues PROC USES EBX
                 .ELSE
                     mov p_lua, eax
                 .ENDIF
+            .ENDIF
+            
+            ; update type 1 pattern - a game global variable to point to actual content
+            mov eax, dwPatternAddress
+            .IF eax != 0
+                mov ebx, ptrCurrentPattern
+                mov eax, [eax]
+                mov [ebx].PATTERN.PatAddress, eax
             .ENDIF
         
         .ELSEIF [ebx].PATTERN.bFound == TRUE && [ebx].PATTERN.PatType == 3 ; read byte
