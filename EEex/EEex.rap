@@ -57,20 +57,20 @@ Menu=1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0
 [VerInf]
 Nme=VERINF1
 ID=1
-FV=1.0.0.9
-PV=1.0.0.9
+FV=1.0.0.10
+PV=1.0.0.10
 VerOS=0x00000004
 VerFT=0x00000001
 VerLNG=0x00000409
 VerCHS=0x000004B0
-ProductVersion=1.0.0.9
+ProductVersion=1.0.0.10
 ProductName=EEex.exe
 OriginalFilename=EEex.exe
 LegalTrademarks=fearless
 LegalCopyright=fearless
 InternalName=EEex.exe
 FileDescription=EEex loader
-FileVersion=1.0.0.9
+FileVersion=1.0.0.10
 CompanyName=fearless
 [Group]
 Group=Assembly,Resources,Misc
@@ -117,7 +117,7 @@ MilestoneOnTime=2
 MilestoneOnDate=0
 MilestoneOnDateWhen=1
 MilestoneOnDateStatus=0
-MilestoneOnDateDate=20
+MilestoneOnDateDate=21
 MilestoneOnDateTimeYear=2019
 MilestoneOnDateTimeMonth=1
 MilestoneOnDateTimeDate=26
@@ -141,7 +141,7 @@ ProductVer2Range=0
 ProductVer3Range=0
 ProductVer4Range=0
 [PTimer]
-PTimer=33264280
+PTimer=33283546
 [GroupExpand]
 GroupExpand=1,0,1,0
 [BookMark]
