@@ -18,6 +18,7 @@ includelib version.lib
 ;------------------------------------------------------------------------------
 ; EEex Prototypes
 ;------------------------------------------------------------------------------
+ProcessCmdLine          PROTO
 WinMain                 PROTO :DWORD, :DWORD, :DWORD, :DWORD
 EnumWindowsProc         PROTO :DWORD, :DWORD
 CheckFileVersion        PROTO :DWORD, :DWORD
@@ -31,6 +32,8 @@ LANGANDCODEPAGE         STRUCT
 LANGANDCODEPAGE         ENDS
 ENDIF
 
+.CONST
+EEEX_ALIGN              TEXTEQU <ALIGN 16>
 
 .DATA
 ;------------------------------------------------------------------------------
@@ -117,13 +120,6 @@ szFileACTIONids         DB MAX_PATH DUP (0)
 szFileM__EEexlua        DB MAX_PATH DUP (0)
 szFileEEexDB            DB MAX_PATH DUP (0)
 
-dwBytesRead             DD 0 
-TotalBytesAvail         DD 0 
-BytesLeftThisMessage    DD 0
-
-PIPEBUFFER              DB 4096 DUP (0)
-
-StartedMode             DD 0
 
 
 
@@ -141,11 +137,6 @@ hWnd                    DD ?
 startinfo               STARTUPINFO <>
 pi                      PROCESS_INFORMATION <>
 wfd                     WIN32_FIND_DATA <>
-SecuAttr                SECURITY_ATTRIBUTES <>
-hChildStd_OUT_Rd        DD ?
-hChildStd_OUT_Wr        DD ?
-hChildStd_IN_Rd         DD ?
-hChildStd_IN_Wr         DD ?
 ExitCode                DD ?
 
 

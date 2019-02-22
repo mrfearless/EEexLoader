@@ -13,7 +13,7 @@ Debug=0
 2=EEex.inc
 3=EEex.rc
 4=EEex.xml
-5=
+5=EEexConsole.asm
 [MakeFiles]
 0=EEex.rap
 1=EEex.rc
@@ -45,7 +45,7 @@ Menu=1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0
 7=0,0,"$E\x32dbg.exe",5
 11=4,O,$B\RC.EXE /v,1
 12=3,O,$B\ML.EXE /c /coff /Cp /Zi /Zd /nologo /I"$I",2
-13=5,O,$B\LINK.EXE /SUBSYSTEM:WINDOWS /DEBUG /DEBUGTYPE:CV /PDB:"$18" /VERSION:4.0 /LIBPATH:"$L" /OUT:"$5",3,4
+13=5,O,$B\LINK.EXE /SUBSYSTEM:WINDOWS /DEBUG /DEBUGTYPE:CV /PDB:"$18" /VERSION:4.0 /LIBPATH:"$L" /OUT:"EEex_dbg.exe",3,4
 14=0,0,,5
 15=rsrc.obj,O,$B\CVTRES.EXE,rsrc.res
 16=*.obj,O,$B\ML.EXE /c /coff /Cp /nologo /I"$I",*.asm
@@ -57,20 +57,20 @@ Menu=1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0
 [VerInf]
 Nme=VERINF1
 ID=1
-FV=1.0.0.11
-PV=1.0.0.11
+FV=1.0.0.12
+PV=1.0.0.12
 VerOS=0x00000004
 VerFT=0x00000001
 VerLNG=0x00000409
 VerCHS=0x000004B0
-ProductVersion=1.0.0.11
+ProductVersion=1.0.0.12
 ProductName=EEex.exe
 OriginalFilename=EEex.exe
 LegalTrademarks=fearless
 LegalCopyright=fearless
 InternalName=EEex.exe
 FileDescription=EEex loader
-FileVersion=1.0.0.11
+FileVersion=1.0.0.12
 CompanyName=fearless
 [Group]
 Group=Assembly,Resources,Misc
@@ -78,13 +78,14 @@ Group=Assembly,Resources,Misc
 2=1
 3=2
 4=2
-5=
+5=1
 [AutoLoad]
 AutoLoad=2,1,4,3
 [RADebugBP]
 2=
 1=
 3=
+5=
 [Find]
 1="NtWVM"
 2="szFileVersion"
@@ -100,11 +101,11 @@ AutoLoad=2,1,4,3
 4=0,0,0,0,0
 5=
 3=0,0,0,0,19
-1=0,0,0,0,818
+1=0,0,0,0,28587
 2=0,0,0,0,5499
 [Collapse]
 3=
-1=1342705328,16,
+1=1342705312,16,
 2=
 4=
 [VersionControl]
@@ -141,7 +142,7 @@ ProductVer2Range=0
 ProductVer3Range=0
 ProductVer4Range=0
 [PTimer]
-PTimer=42875501
+PTimer=43121702
 [GroupExpand]
 GroupExpand=1,0,1,0
 [BookMark]

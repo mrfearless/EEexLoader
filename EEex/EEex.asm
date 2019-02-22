@@ -20,32 +20,81 @@ include \masm32\macros\macros.asm
 ;    include M:\Masm32\include\debug32.inc
 ;ENDIF
 
-ConsoleClearScreen  PROTO
-ConsoleStdOut       PROTO :DWORD
-ConsoleStarted      PROTO
-ConsoleAttach       PROTO
-ConsoleSendEnterKey PROTO
 
-ReadFromPipe        PROTO 
 
 include EEex.inc
+include EEexConsole.asm
 
 CHECK_EXE_FILEVERSION       EQU 1 ; uncomment for exe file version checks
 CHECK_EEexDLL_EXISTS        EQU 1 ; uncomment to check if EEex.dll exists
 ;CHECK_OVERRIDE_FILES        EQU 1 ; uncomment to check if override files exists
 
-.code
 
+.CODE
+
+;------------------------------------------------------------------------------
+; Start
+;------------------------------------------------------------------------------
 start:
 
     Invoke GetModuleHandle, NULL
     mov hInstance, eax
     Invoke GetCommandLine
     mov CommandLine, eax
-
+    
+    Invoke ProcessCmdLine
+    
     Invoke WinMain, hInstance, NULL, CommandLine, SW_SHOWDEFAULT
     Invoke ExitProcess, eax
+    ret
 
+EEEX_ALIGN
+;------------------------------------------------------------------------------
+; ProcessCmdLine - process the command line
+;------------------------------------------------------------------------------
+ProcessCmdLine PROC
+    LOCAL dwTotalParameters:DWORD
+    LOCAL dwLenParam1:DWORD
+    
+    Invoke ConsoleParseCmdLine, Addr CmdLineParameters
+    mov dwTotalParameters, eax
+
+    .IF eax == 1 ; only EEex.exe is specified on command line
+        ret
+        
+    .ELSEIF eax == 2 ; EEex.exe and some other parameter 
+        Invoke ConsoleCmdLineParam, Addr CmdLineParameters, 1, dwTotalParameters, Addr szParameter1Buffer
+        
+        Invoke GetCurrentDirectory, MAX_PATH, Addr szLogFile
+        Invoke lstrcat, Addr szLogFile, Addr szBackslash
+        Invoke lstrcat, Addr szLogFile, Addr szParameter1Buffer
+        
+        IFDEF DEBUG32
+        PrintString szLogFile
+        ENDIF
+        
+        Invoke CreateFile, Addr szLogFile, GENERIC_READ or GENERIC_WRITE, FILE_SHARE_WRITE or FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL
+        .IF eax == INVALID_HANDLE_VALUE
+            IFDEF DEBUG32
+            Invoke GetLastError
+            PrintDec eax
+            ENDIF
+            ret
+        .ENDIF
+
+    .ENDIF
+    
+    mov hLogFile, eax
+    
+    IFDEF DEBUG32
+    PrintDec hLogFile
+    ENDIF
+    
+    xor eax, eax
+    ret
+ProcessCmdLine ENDP
+
+EEEX_ALIGN
 ;------------------------------------------------------------------------------
 ; WinMain
 ;------------------------------------------------------------------------------
@@ -407,6 +456,9 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
             Invoke CloseHandle, hChildStd_OUT_Wr
             Invoke CloseHandle, hChildStd_IN_Rd
             Invoke CloseHandle, hChildStd_IN_Wr
+            .IF hLogFile != 0
+                Invoke CloseHandle, hLogFile
+            .ENDIF
         .ENDIF
 
         Invoke CloseHandle, pi.hThread
@@ -424,7 +476,7 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
     ret
 WinMain ENDP
 
-
+EEEX_ALIGN
 ;------------------------------------------------------------------------------
 ; EnumWindowsProc - enumerates all top-level windows
 ; Search for SDLapp class and if found check window title for Beamdog EE game
@@ -453,7 +505,7 @@ EnumWindowsProc PROC USES EBX hWindow:DWORD, lParam:DWORD
     ret
 EnumWindowsProc ENDP
 
-
+EEEX_ALIGN
 ;------------------------------------------------------------------------------
 ; Displays Error Messages
 ;------------------------------------------------------------------------------
@@ -482,7 +534,7 @@ DisplayErrorMessage PROC USES EDX szMessage:DWORD, dwError:DWORD
     ret
 DisplayErrorMessage ENDP
 
-
+EEEX_ALIGN
 ;------------------------------------------------------------------------------
 ; Does the actual injection into the Beamdog EE executable to load the EEex.DLL 
 ;------------------------------------------------------------------------------
@@ -589,7 +641,7 @@ InjectDLL PROC hProcess:HANDLE, szDLLPath:DWORD
     ret
 InjectDLL endp
 
-
+EEEX_ALIGN
 ;------------------------------------------------------------------------------
 ; Checks file version of the filename for the correct version of beamdog game
 ; Returns: eax contains TRUE if version matches, otherwise returns FALSE
@@ -694,131 +746,6 @@ CheckFileVersion PROC USES EBX szVersionFile:DWORD, szVersion:DWORD
     ret
 CheckFileVersion endp
 ENDIF
-
-;------------------------------------------------------------------------------
-; ConsoleStdOut
-;------------------------------------------------------------------------------
-ConsoleStdOut PROC lpszConText:DWORD
-    LOCAL hConOutput:DWORD
-    LOCAL dwBytesWritten:DWORD
-    LOCAL dwLenConText:DWORD
-
-    Invoke GetStdHandle, STD_OUTPUT_HANDLE
-    mov hConOutput, eax
-
-    Invoke lstrlen, lpszConText
-    mov dwLenConText, eax
-
-    Invoke WriteFile, hConOutput, lpszConText, dwLenConText, Addr dwBytesWritten, NULL
-
-    mov eax, dwBytesWritten
-    ret
-ConsoleStdOut ENDP
-
-
-;-----------------------------------------------------------------------------------------
-; ClearConsoleScreen 
-;-----------------------------------------------------------------------------------------
-ConsoleClearScreen PROC USES EBX
-    LOCAL hConOutput:DWORD
-    LOCAL noc:DWORD
-    LOCAL cnt:DWORD
-    LOCAL sbi:CONSOLE_SCREEN_BUFFER_INFO
-
-    Invoke GetStdHandle, STD_OUTPUT_HANDLE
-    mov hConOutput, eax
-
-    Invoke GetConsoleScreenBufferInfo, hConOutput, Addr sbi
-    mov eax, sbi.dwSize ; 2 word values returned for screen size
-
-    ; extract the 2 values and multiply them together
-    mov ebx, eax
-    shr eax, 16
-    mul bx
-    mov cnt, eax
-
-    Invoke FillConsoleOutputCharacter, hConOutput, 32, cnt, NULL, Addr noc
-    movzx ebx, sbi.wAttributes
-    Invoke FillConsoleOutputAttribute, hConOutput, ebx, cnt, NULL, Addr noc
-    Invoke SetConsoleCursorPosition, hConOutput, NULL
-    ret
-ConsoleClearScreen ENDP
-
-
-;------------------------------------------------------------------------------
-; ConsoleStarted - For GUI Apps - Return TRUE if started from console or FALSE 
-; if started via GUI (explorer) 
-;------------------------------------------------------------------------------
-ConsoleStarted PROC
-    LOCAL pidbuffer[8]:DWORD
-    Invoke GetConsoleProcessList, Addr pidbuffer, 4
-    .IF eax == 2
-        mov eax, TRUE
-    .ELSE    
-        mov eax, FALSE
-    .ENDIF
-    ret
-ConsoleStarted ENDP
-
-
-;------------------------------------------------------------------------------
-; ConsoleSendEnterKey
-;------------------------------------------------------------------------------
-ConsoleSendEnterKey PROC
-    Invoke GetConsoleWindow
-    .IF eax != 0
-        Invoke SendMessage, eax, WM_CHAR, VK_RETURN, 0
-    .ENDIF
-    ret
-ConsoleSendEnterKey ENDP
-
-
-;------------------------------------------------------------------------------
-; ConsoleAttach
-;------------------------------------------------------------------------------
-ConsoleAttach PROC
-    Invoke AttachConsole, ATTACH_PARENT_PROCESS
-    ret
-ConsoleAttach ENDP
-
-;------------------------------------------------------------------------------
-; Read output from the child process's pipe for STDOUT
-; and write to the parent process's pipe for STDOUT. 
-; Stop when there is no more data. 
-;------------------------------------------------------------------------------
-ReadFromPipe PROC 
-    LOCAL dwRead:DWORD
-    LOCAL dwWritten:DWORD
-    LOCAL hParentStdOut:DWORD
-    LOCAL bSuccess:DWORD
-
-    mov bSuccess, FALSE
-    Invoke GetStdHandle, STD_OUTPUT_HANDLE
-    mov hParentStdOut, eax
-
-    .WHILE TRUE
-        Invoke GetExitCodeProcess, pi.hProcess, Addr ExitCode
-        .IF ExitCode != STILL_ACTIVE
-            ret
-        .ENDIF
-        
-        Invoke ReadFile, hChildStd_OUT_Rd, Addr PIPEBUFFER, SIZEOF PIPEBUFFER, Addr dwRead, NULL
-        mov bSuccess, eax
-        ;PrintDec bSuccess
-        ;PrintDec dwRead
-        .IF bSuccess == FALSE || dwRead == 0
-            ret
-        .ENDIF
-        
-        Invoke WriteFile, hParentStdOut, Addr PIPEBUFFER, dwRead, Addr dwWritten, NULL
-        mov bSuccess, eax
-        .IF bSuccess == FALSE
-            ret
-        .ENDIF
-    .ENDW
-    
-    ret
-ReadFromPipe ENDP
 
 
 
