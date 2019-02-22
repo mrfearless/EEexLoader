@@ -20,6 +20,14 @@ include \masm32\macros\macros.asm
 ;    include M:\Masm32\include\debug32.inc
 ;ENDIF
 
+ConsoleClearScreen  PROTO
+ConsoleStdOut       PROTO :DWORD
+ConsoleStarted      PROTO
+ConsoleAttach       PROTO
+ConsoleSendEnterKey PROTO
+
+ReadFromPipe        PROTO 
+
 include EEex.inc
 
 CHECK_EXE_FILEVERSION       EQU 1 ; uncomment for exe file version checks
@@ -54,10 +62,17 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
     mov bEEGameFound, FALSE
     mov lpszEEGame, 0
     
-    mov eax, SIZEOF STARTUPINFO
-    mov startinfo.cb, eax
+    Invoke RtlZeroMemory, Addr startinfo, SIZEOF STARTUPINFO
+    mov startinfo.cb, SIZEOF STARTUPINFO
     
-    
+    ;--------------------------------------------------------------------------
+    ; Check if we can attach a console or not, which helps determine if
+    ; we started via explorer or via a command line (cmd)
+    ;--------------------------------------------------------------------------
+    Invoke ConsoleAttach
+    Invoke ConsoleStarted
+    mov StartedMode, eax
+
     ;--------------------------------------------------------------------------
     ; Check EE game is not already running
     ;--------------------------------------------------------------------------
@@ -329,12 +344,42 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
     
     
     ;--------------------------------------------------------------------------
+    ; Prepare Startup info for pipe redirection if EEex.exe started via console
+    ;--------------------------------------------------------------------------
+    .IF StartedMode == TRUE ; started via Console
+        IFDEF DEBUG32
+        PrintText 'Console mode - redirection of child process stdout'
+        ENDIF
+
+        mov SecuAttr.nLength, SIZEOF SECURITY_ATTRIBUTES
+        mov SecuAttr.lpSecurityDescriptor, NULL
+        mov SecuAttr.bInheritHandle, TRUE
+        
+        Invoke CreatePipe, Addr hChildStd_OUT_Rd, Addr hChildStd_OUT_Wr, Addr SecuAttr, NULL 
+        Invoke SetHandleInformation, hChildStd_OUT_Rd, HANDLE_FLAG_INHERIT, 0
+        
+        Invoke CreatePipe, Addr hChildStd_IN_Rd, Addr hChildStd_IN_Wr, Addr SecuAttr, NULL
+        Invoke SetHandleInformation, hChildStd_IN_Wr, HANDLE_FLAG_INHERIT, 0
+        
+        mov eax, hChildStd_OUT_Wr
+        mov startinfo.hStdError, eax
+        mov startinfo.hStdOutput, eax
+        mov eax, hChildStd_IN_Rd
+        mov startinfo.hStdInput, eax
+        mov startinfo.dwFlags, STARTF_USESTDHANDLES
+    .ELSE
+        IFDEF DEBUG32
+        PrintText 'GUI mode - no console redirection'
+        ENDIF    
+    .ENDIF
+    
+    ;--------------------------------------------------------------------------
     ; Launch EE game's executable, ready for injection of our EEex.dll
     ;--------------------------------------------------------------------------
     IFDEF DEBUG32
     PrintText 'Launch EE games executable'
     ENDIF
-    Invoke CreateProcess, lpszEEGame, NULL, NULL, NULL, FALSE, CREATE_SUSPENDED, NULL, NULL, Addr startinfo, Addr pi
+    Invoke CreateProcess, lpszEEGame, NULL, NULL, NULL, TRUE, CREATE_SUSPENDED, NULL, NULL, Addr startinfo, Addr pi
     .IF eax != 0 ; CreateProcess success
         ;----------------------------------------------------------------------
         ; Inject EEex.dll into EE game and resume EE game execution
@@ -348,6 +393,22 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
         Invoke InjectDLL, pi.hProcess, Addr szEEexDLL
         mov dwExitCode, eax
         Invoke ResumeThread, pi.hThread
+
+        .IF StartedMode == TRUE
+            ;------------------------------------------------------------------
+            ; Redirect EE game output to our allocated console
+            ;------------------------------------------------------------------
+            Invoke ConsoleClearScreen
+            Invoke ReadFromPipe
+            Invoke ConsoleStdOut, Addr szCRLF
+            Invoke ConsoleSendEnterKey
+            Invoke FreeConsole
+            Invoke CloseHandle, hChildStd_OUT_Rd
+            Invoke CloseHandle, hChildStd_OUT_Wr
+            Invoke CloseHandle, hChildStd_IN_Rd
+            Invoke CloseHandle, hChildStd_IN_Wr
+        .ENDIF
+
         Invoke CloseHandle, pi.hThread
         Invoke CloseHandle, pi.hProcess
         .IF dwExitCode != TRUE
@@ -485,7 +546,7 @@ InjectDLL PROC hProcess:HANDLE, szDLLPath:DWORD
         mov eax, FALSE
         ret
     .ENDIF
-
+    
     Invoke WaitForSingleObject, hRemoteThread, INFINITE
 
     .IF eax == WAIT_ABANDONED
@@ -633,6 +694,136 @@ CheckFileVersion PROC USES EBX szVersionFile:DWORD, szVersion:DWORD
     ret
 CheckFileVersion endp
 ENDIF
+
+;------------------------------------------------------------------------------
+; ConsoleStdOut
+;------------------------------------------------------------------------------
+ConsoleStdOut PROC lpszConText:DWORD
+    LOCAL hConOutput:DWORD
+    LOCAL dwBytesWritten:DWORD
+    LOCAL dwLenConText:DWORD
+
+    Invoke GetStdHandle, STD_OUTPUT_HANDLE
+    mov hConOutput, eax
+
+    Invoke lstrlen, lpszConText
+    mov dwLenConText, eax
+
+    Invoke WriteFile, hConOutput, lpszConText, dwLenConText, Addr dwBytesWritten, NULL
+
+    mov eax, dwBytesWritten
+    ret
+ConsoleStdOut ENDP
+
+
+;-----------------------------------------------------------------------------------------
+; ClearConsoleScreen 
+;-----------------------------------------------------------------------------------------
+ConsoleClearScreen PROC USES EBX
+    LOCAL hConOutput:DWORD
+    LOCAL noc:DWORD
+    LOCAL cnt:DWORD
+    LOCAL sbi:CONSOLE_SCREEN_BUFFER_INFO
+
+    Invoke GetStdHandle, STD_OUTPUT_HANDLE
+    mov hConOutput, eax
+
+    Invoke GetConsoleScreenBufferInfo, hConOutput, Addr sbi
+    mov eax, sbi.dwSize ; 2 word values returned for screen size
+
+    ; extract the 2 values and multiply them together
+    mov ebx, eax
+    shr eax, 16
+    mul bx
+    mov cnt, eax
+
+    Invoke FillConsoleOutputCharacter, hConOutput, 32, cnt, NULL, Addr noc
+    movzx ebx, sbi.wAttributes
+    Invoke FillConsoleOutputAttribute, hConOutput, ebx, cnt, NULL, Addr noc
+    Invoke SetConsoleCursorPosition, hConOutput, NULL
+    ret
+ConsoleClearScreen ENDP
+
+
+;------------------------------------------------------------------------------
+; ConsoleStarted - For GUI Apps - Return TRUE if started from console or FALSE 
+; if started via GUI (explorer) 
+;------------------------------------------------------------------------------
+ConsoleStarted PROC
+    LOCAL pidbuffer[8]:DWORD
+    Invoke GetConsoleProcessList, Addr pidbuffer, 4
+    .IF eax == 2
+        mov eax, TRUE
+    .ELSE    
+        mov eax, FALSE
+    .ENDIF
+    ret
+ConsoleStarted ENDP
+
+
+;------------------------------------------------------------------------------
+; ConsoleSendEnterKey
+;------------------------------------------------------------------------------
+ConsoleSendEnterKey PROC
+    Invoke GetConsoleWindow
+    .IF eax != 0
+        Invoke SendMessage, eax, WM_CHAR, VK_RETURN, 0
+    .ENDIF
+    ret
+ConsoleSendEnterKey ENDP
+
+
+;------------------------------------------------------------------------------
+; ConsoleAttach
+;------------------------------------------------------------------------------
+ConsoleAttach PROC
+    Invoke AttachConsole, ATTACH_PARENT_PROCESS
+    ret
+ConsoleAttach ENDP
+
+;------------------------------------------------------------------------------
+; Read output from the child process's pipe for STDOUT
+; and write to the parent process's pipe for STDOUT. 
+; Stop when there is no more data. 
+;------------------------------------------------------------------------------
+ReadFromPipe PROC 
+    LOCAL dwRead:DWORD
+    LOCAL dwWritten:DWORD
+    LOCAL hParentStdOut:DWORD
+    LOCAL bSuccess:DWORD
+
+    mov bSuccess, FALSE
+    Invoke GetStdHandle, STD_OUTPUT_HANDLE
+    mov hParentStdOut, eax
+
+    .WHILE TRUE
+        Invoke GetExitCodeProcess, pi.hProcess, Addr ExitCode
+        .IF ExitCode != STILL_ACTIVE
+            ret
+        .ENDIF
+        
+        Invoke ReadFile, hChildStd_OUT_Rd, Addr PIPEBUFFER, SIZEOF PIPEBUFFER, Addr dwRead, NULL
+        mov bSuccess, eax
+        ;PrintDec bSuccess
+        ;PrintDec dwRead
+        .IF bSuccess == FALSE || dwRead == 0
+            ret
+        .ENDIF
+        
+        Invoke WriteFile, hParentStdOut, Addr PIPEBUFFER, dwRead, Addr dwWritten, NULL
+        mov bSuccess, eax
+        .IF bSuccess == FALSE
+            ret
+        .ENDIF
+    .ENDW
+    
+    ret
+ReadFromPipe ENDP
+
+
+
+
+
 
 end start
 

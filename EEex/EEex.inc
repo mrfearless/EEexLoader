@@ -37,13 +37,7 @@ ENDIF
 ; EEex Initialized Data
 ;------------------------------------------------------------------------------
 AppName                 DB "EEex loader",0
-
-; Beamdog EE game titles:
-;szBeamdog_BGEE_Caption  DB "Baldur's Gate - Enhanced Edition",0
-;szBeamdog_BG2EE_Caption DB "Baldur's Gate II - Enhanced Edition",0
-;szBeamdog_BGSOD_Caption DB "Seige of Dragonspear - Enhanced Edition",0
-;szBeamdog_IWDEE_Caption DB "Icewind Dale - Enhanced Edition",0
-;szBeamdog_PSTEE_Caption DB "Planescape Torment - Enhanced Edition",0
+szCRLF                  DB 13,10,0
 
 ; Beamdog EE game executables:
 szBeamdog_BGEE          DB "Baldur.exe",0
@@ -123,6 +117,16 @@ szFileACTIONids         DB MAX_PATH DUP (0)
 szFileM__EEexlua        DB MAX_PATH DUP (0)
 szFileEEexDB            DB MAX_PATH DUP (0)
 
+dwBytesRead             DD 0 
+TotalBytesAvail         DD 0 
+BytesLeftThisMessage    DD 0
+
+PIPEBUFFER              DB 4096 DUP (0)
+
+StartedMode             DD 0
+
+
+
 .DATA?
 ;------------------------------------------------------------------------------
 ; EEex Uninitialized Data
@@ -137,6 +141,11 @@ hWnd                    DD ?
 startinfo               STARTUPINFO <>
 pi                      PROCESS_INFORMATION <>
 wfd                     WIN32_FIND_DATA <>
-
+SecuAttr                SECURITY_ATTRIBUTES <>
+hChildStd_OUT_Rd        DD ?
+hChildStd_OUT_Wr        DD ?
+hChildStd_IN_Rd         DD ?
+hChildStd_IN_Wr         DD ?
+ExitCode                DD ?
 
 
