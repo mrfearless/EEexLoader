@@ -3,7 +3,7 @@ GetCommandLine          EQU <GetCommandLineA>
 ConsoleParseCmdLine     PROTO :DWORD
 ConsoleCmdLineParam     PROTO :DWORD,:DWORD,:DWORD,:DWORD
 ConsoleClearScreen      PROTO
-ConsoleStdOut           PROTO :DWORD
+ConsoleText           PROTO :DWORD
 ConsoleStarted          PROTO
 ConsoleAttach           PROTO
 ConsoleSendEnterKey     PROTO
@@ -149,51 +149,46 @@ ConsoleCmdLineParam endp
 
 EEEX_ALIGN
 ;------------------------------------------------------------------------------
-; ConsoleStdOut
+; ConsoleText
 ;------------------------------------------------------------------------------
-ConsoleStdOut PROC lpszConText:DWORD
-    LOCAL hConOutput:DWORD
+ConsoleText PROC lpszConText:DWORD
     LOCAL dwBytesWritten:DWORD
-    LOCAL dwLenConText:DWORD
+    LOCAL dwBytesToWrite:DWORD
 
-    Invoke GetStdHandle, STD_OUTPUT_HANDLE
-    mov hConOutput, eax
-
-    Invoke lstrlen, lpszConText
-    mov dwLenConText, eax
-
-    Invoke WriteFile, hConOutput, lpszConText, dwLenConText, Addr dwBytesWritten, NULL
-
-    mov eax, dwBytesWritten
+    .IF hConOutput != 0 && lpszConText != 0
+        Invoke lstrlen, lpszConText
+        mov dwBytesToWrite, eax
+        Invoke WriteFile, hConOutput, lpszConText, dwBytesToWrite, Addr dwBytesWritten, NULL
+        mov eax, dwBytesWritten
+    .ELSE
+        xor eax, eax
+    .ENDIF
     ret
-ConsoleStdOut ENDP
+ConsoleText ENDP
 
 EEEX_ALIGN
 ;------------------------------------------------------------------------------
 ; ClearConsoleScreen 
 ;------------------------------------------------------------------------------
 ConsoleClearScreen PROC USES EBX
-    LOCAL hConOutput:DWORD
     LOCAL noc:DWORD
     LOCAL cnt:DWORD
     LOCAL sbi:CONSOLE_SCREEN_BUFFER_INFO
-
-    Invoke GetStdHandle, STD_OUTPUT_HANDLE
-    mov hConOutput, eax
-
-    Invoke GetConsoleScreenBufferInfo, hConOutput, Addr sbi
-    mov eax, sbi.dwSize ; 2 word values returned for screen size
-
-    ; extract the 2 values and multiply them together
-    mov ebx, eax
-    shr eax, 16
-    mul bx
-    mov cnt, eax
-
-    Invoke FillConsoleOutputCharacter, hConOutput, 32, cnt, NULL, Addr noc
-    movzx ebx, sbi.wAttributes
-    Invoke FillConsoleOutputAttribute, hConOutput, ebx, cnt, NULL, Addr noc
-    Invoke SetConsoleCursorPosition, hConOutput, NULL
+    .IF hConOutput != 0
+        Invoke GetConsoleScreenBufferInfo, hConOutput, Addr sbi
+        mov eax, sbi.dwSize ; 2 word values returned for screen size
+    
+        ; extract the 2 values and multiply them together
+        mov ebx, eax
+        shr eax, 16
+        mul bx
+        mov cnt, eax
+    
+        Invoke FillConsoleOutputCharacter, hConOutput, 32, cnt, NULL, Addr noc
+        movzx ebx, sbi.wAttributes
+        Invoke FillConsoleOutputAttribute, hConOutput, ebx, cnt, NULL, Addr noc
+        Invoke SetConsoleCursorPosition, hConOutput, NULL
+    .ENDIF
     ret
 ConsoleClearScreen ENDP
 

@@ -22,8 +22,11 @@ ProcessCmdLine          PROTO
 WinMain                 PROTO :DWORD, :DWORD, :DWORD, :DWORD
 EnumWindowsProc         PROTO :DWORD, :DWORD
 CheckFileVersion        PROTO :DWORD, :DWORD
-DisplayErrorMessage     PROTO :DWORD, :DWORD
 InjectDLL               PROTO :DWORD, :DWORD
+
+DisplayErrorMessage     PROTO :DWORD, :DWORD
+LogMessage              PROTO :DWORD
+
 
 IFNDEF LANGANDCODEPAGE
 LANGANDCODEPAGE         STRUCT
@@ -40,7 +43,14 @@ EEEX_ALIGN              TEXTEQU <ALIGN 16>
 ; EEex Initialized Data
 ;------------------------------------------------------------------------------
 AppName                 DB "EEex loader",0
+szAppName               DB "[EEex loader]",0
+szAppVersion            DB " v1.0.0.13",0
+szEEexLoaderByfearless  DB "EEex loader by fearless: github.com/mrfearless/EEexLoader",0
+szEEexByBubb            DB "EEex by Bubb: github.com/Bubb13/EEex",0
 szCRLF                  DB 13,10,0
+szInfoEntry             DB "[*] ",0
+szStatusEntry           DB "[-] ",0
+szErrorEntry            DB "[!] ",0
 
 ; Beamdog EE game executables:
 szBeamdog_BGEE          DB "Baldur.exe",0
@@ -76,7 +86,7 @@ szFormatErrorMessage    DB 'Error: ', '%s', 0
 
 ; EE Game Locate And Execute Error Messages:
 szErrorEEGameRunning    DB "A Beamdog Enhanced Edition game is already running, please close it before launching EEex.",0
-szErrorEEGameExecute    DB "CreateProcess failed to execute Beamdog Enhanced Edition game executable.",0
+szErrorEEGameExecute    DB "CreateProcess failed to execute Beamdog Enhanced Edition game executable. ",0
 szErrorEEGameEXE        DB "Failed to locate a Beamdog Enhanced Edition game executable.",0
 szErrorEEexDLLFind      DB "Failed to locate EEex.dll. Make sure it is located in the game folder along with EEex.exe",0   
 szErrorEEOverrideFiles  DB "One of more override files appear to be missing: UI.menu, TRIGGER.ids, OBJECT.ids and ACTION.ids",0
@@ -99,15 +109,19 @@ szErrorHeap             DB "CheckFileVersion: GetProcessHeap failed.",0
 szErrorHeapAlloc        DB "CheckFileVersion: HeapAlloc failed.",0
 
 ; InjectDLL Error Messages:
-szErrorVirtualAllocEx   DB "InjectDLL: VirtualAllocEx failed.",0
-szErrorWriteProcessMem  DB "InjectDLL: WriteProcessMemory failed.",0
-szErrorGetModuleHandle  DB "InjectDLL: GetModuleHandle failed.",0
-szErrorGetProcAddress   DB "InjectDLL: GetProcAddress failed.",0
-szErrorRemoteThread     DB "InjectDLL: CreateRemoteThread failed.", 0
-szErrorWaitSingleObj    DB "InjectDLL: WaitForSingleObject failed.",0
-szErrorWaitSingleInv    DB "InjectDLL: WaitForSingleObject returned invalid value.",0
-szErrorExitCodeThread   DB "InjectDLL: GetExitCodeThread failed.",0
-szErrorThreadActive     DB "InjectDLL: hRemoteThread still active.",0
+szErrorVirtualAllocEx   DB "InjectDLL: VirtualAllocEx failed. ",0
+szErrorWriteProcessMem  DB "InjectDLL: WriteProcessMemory failed. ",0
+szErrorGetModuleHandle  DB "InjectDLL: GetModuleHandle failed. ",0
+szErrorGetProcAddress   DB "InjectDLL: GetProcAddress failed. ",0
+szErrorRemoteThread     DB "InjectDLL: CreateRemoteThread failed. ", 0
+szErrorWaitSingleObj    DB "InjectDLL: WaitForSingleObject failed. ",0
+szErrorWaitSingleInv    DB "InjectDLL: WaitForSingleObject returned invalid value. ",0
+szErrorExitCodeThread   DB "InjectDLL: GetExitCodeThread failed. ",0
+szErrorThreadActive     DB "InjectDLL: hRemoteThread still active. ",0
+
+szStatusLaunchingEEGame DB "Launching EE game executable: ",0
+szStatusInjectingDLL    DB "Injecting EEex.dll into EE game executable.",0
+szStatusRedirectCon     DB "Redirecting console output of EE game executable: ",0
 
 szCurrentFolder         DB MAX_PATH DUP (0)
 szEEGameEXE             DB MAX_PATH DUP (0)
@@ -138,5 +152,5 @@ startinfo               STARTUPINFO <>
 pi                      PROCESS_INFORMATION <>
 wfd                     WIN32_FIND_DATA <>
 ExitCode                DD ?
-
+hConOutput              DD ?
 

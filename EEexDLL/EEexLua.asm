@@ -28,8 +28,7 @@ EEex_ExposeToLua        PROTO C :VARARG         ; (lua_State), FunctionAddress, 
 EEex_Call               PROTO C :VARARG         ; (lua_State)
 
 EEex_AddressList        PROTO C :DWORD          ; (lua_State)
-;EEex_AddressListAsm    PROTO C :DWORD          ; (lua_State)
-;EEex_AddressListCount  PROTO C :DWORD          ; (lua_State)
+;EEex_ReadDWORD          PROTO C :DWORD, :DWORD  ; (lua_State), dwAddress
 
 IFDEF EEEX_LUALIB       ; use this internal one rather than static version as it crashes
 lua_setglobalx          PROTO C :DWORD, :DWORD  ; (lua_State), Name
@@ -57,9 +56,7 @@ szEEex_WriteByte        DB "EEex_WriteByte",0
 szEEex_ExposeToLua      DB "EEex_ExposeToLua",0
 szEEex_Call             DB "EEex_Call",0
 szEEex_AddressList      DB "EEex_AddressList",0
-;szEEex_AddressListAsm   DB "EEex_AddressListAsm",0
-;szEEex_AddressListCount DB "EEex_AddressListCount",0
-;szEEex_LuaAddressList   DB "LuaAddressList",0
+;szEEex_ReadDWORD        DB "EEex_ReadDWORD",0
 
 pAddressList            DD 0 ; points to array of ALENTRY entries x TotalPatterns 
 
@@ -206,6 +203,14 @@ EEex_Init PROC C arg:VARARG
         Invoke LogMessageAndHexValue, 0, Addr EEex_AddressList
     .ENDIF
     ENDIF
+
+;    Invoke EEexLuaRegisterFunction, Addr EEex_ReadDWORD, Addr szEEex_ReadDWORD
+;    IFDEF EEEX_LOGGING
+;    .IF gEEexLog >= LOGLEVEL_DEBUG
+;        Invoke LogMessage, CTEXT("Register Function -  EEex_ReadDWORD"), LOG_NONEWLINE, 1
+;        Invoke LogMessageAndHexValue, 0, Addr EEex_ReadDWORD
+;    .ENDIF
+;    ENDIF
     
 ;    Invoke EEexLuaRegisterFunction, Addr EEex_AddressListAsm, Addr szEEex_AddressListAsm
 ;    IFDEF EEEX_LOGGING
@@ -619,6 +624,33 @@ EEex_AddressList PROC C USES EBX lua_State:DWORD
     mov eax, 1
     ret
 EEex_AddressList ENDP
+
+
+EEEX_ALIGN
+;------------------------------------------------------------------------------
+; [LUA] EEex_ReadDWORD: Read DWORD at address
+;
+; EEex_ReadDWORD(Address)
+;------------------------------------------------------------------------------
+EEex_ReadDWORD PROC C USES EBX lua_State:DWORD, dwAddress:DWORD
+;    LOCAL qwAddressContent:QWORD
+;    LOCAL dwAddressContent:DWORD
+;    
+;    .IF dwAddress == 0
+;        xor eax, eax
+;        ret
+;    .ENDIF
+;    
+;    mov ebx, dwAddress
+;    mov eax, [ebx]
+;    mov dwAddressContent, eax
+;    
+;    fild dwAddressContent
+;    fstp qword ptr [qwAddressContent]            
+;    Invoke F_Lua_pushnumber, lua_State, qwAddressContent
+;    mov eax, 1
+;    ret
+EEex_ReadDWORD ENDP
 
 
 EEEX_ALIGN
