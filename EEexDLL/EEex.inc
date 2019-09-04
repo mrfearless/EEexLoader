@@ -16,11 +16,11 @@ includelib kernel32.lib
 includelib psapi.lib
 includelib version.lib
 
-;IFDEF EEEX_LUALIB
+IFDEF EEEX_LUALIB
 include lua52.inc
 includelib lua523.lib ; nil value for lua_setglobal
 includelib msvcrt12.lib
-;ENDIF
+ENDIF
 
 ;------------------------------------------------------------------------------
 ; EEex.dll Prototypes

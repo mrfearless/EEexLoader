@@ -1,7 +1,7 @@
 #define VERINF1 1
 VERINF1 VERSIONINFO
-FILEVERSION 1,0,0,15
-PRODUCTVERSION 1,0,0,15
+FILEVERSION 1,0,0,16
+PRODUCTVERSION 1,0,0,16
 FILEOS 0x00000004
 FILETYPE 0x00000002
 BEGIN
@@ -10,14 +10,14 @@ BEGIN
     BLOCK "040904B0"
     BEGIN
       VALUE "CompanyName", "fearless\0"
-      VALUE "FileVersion", "1.0.0.15\0"
+      VALUE "FileVersion", "1.0.0.16\0"
       VALUE "FileDescription", "EEex.dll\0"
       VALUE "InternalName", "EEex.dll\0"
       VALUE "LegalCopyright", "fearless\0"
       VALUE "LegalTrademarks", "fearless\0"
       VALUE "OriginalFilename", "EEex.dll\0"
       VALUE "ProductName", "EEex.dll\0"
-      VALUE "ProductVersion", "1.0.0.15\0"
+      VALUE "ProductVersion", "1.0.0.16\0"
     END
   END
   BLOCK "VarFileInfo"

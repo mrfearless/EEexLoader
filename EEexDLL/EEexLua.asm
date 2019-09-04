@@ -106,16 +106,6 @@ EEexLuaInit PROC C lua_State:DWORD, lpszString:DWORD
         ret
     .ENDIF    
     
-    ; 04/09/2019 - add in other lua libraries
-    Invoke luaL_requiref, g_lua, CTEXT("io"), Addr luaopen_io, 1
-    Invoke lua_settop, g_lua, -2
-    
-    Invoke luaL_requiref, g_lua, CTEXT("os"), Addr luaopen_os, 1
-    Invoke lua_settop, g_lua, -2
-    
-    Invoke luaL_requiref, g_lua, CTEXT("package"), Addr luaopen_package, 1
-    Invoke lua_settop, g_lua, -2
-    
     ;---------------------------
     ; For prototype of no params
     ;---------------------------
