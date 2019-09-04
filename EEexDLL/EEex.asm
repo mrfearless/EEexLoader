@@ -149,6 +149,7 @@ EEexInitDll PROC USES EBX
                     Invoke LogClose
                 .ENDIF
                 ENDIF
+                Invoke TerminateProcess, hEEGameProcess, NULL
                 ret ; Exit EEexInitDll
             .ENDIF
         .ELSE ; IMAGE_DOS_SIGNATURE Failed
@@ -159,6 +160,7 @@ EEexInitDll PROC USES EBX
                 Invoke LogClose
             .ENDIF
             ENDIF
+            Invoke TerminateProcess, hEEGameProcess, NULL
             ret ; Exit EEexInitDll
         .ENDIF
     .ELSE ; GetModuleInformation Failed
@@ -169,6 +171,7 @@ EEexInitDll PROC USES EBX
             Invoke LogClose
         .ENDIF
         ENDIF
+        Invoke TerminateProcess, hEEGameProcess, NULL
         ret ; Exit EEexInitDll
     .ENDIF
     ;--------------------------------------------------------------------------
@@ -233,8 +236,9 @@ EEexInitDll PROC USES EBX
                 Invoke MessageBox, 0, Addr szErrorSearchFunctions, Addr AppName, MB_OK
             .ENDIF
             ;--------------------------------------------------------------
-            ; EEex.DLL EXITS HERE - Execution continues with EE game
+            ; EEex.DLL EXITS HERE
             ;--------------------------------------------------------------
+            Invoke TerminateProcess, hEEGameProcess, NULL
             ret ; Exit EEexInitDll
         .ENDIF
     .ELSE ; Functions verified, no need for search
@@ -289,8 +293,9 @@ EEexInitDll PROC USES EBX
                 Invoke MessageBox, 0, Addr szErrorPatchFailure, Addr AppName, MB_OK
             .ENDIF
             ;------------------------------------------------------------------
-            ; EEex.DLL EXITS HERE - Execution continues with EE game
+            ; EEex.DLL EXITS HERE
             ;------------------------------------------------------------------
+            Invoke TerminateProcess, hEEGameProcess, NULL
             ret ; Exit EEexInitDll                   
         .ENDIF
     .ELSE
@@ -304,8 +309,9 @@ EEexInitDll PROC USES EBX
             Invoke MessageBox, 0, Addr szErrorPatchLocation, Addr AppName, MB_OK
         .ENDIF
         ;----------------------------------------------------------------------
-        ; EEex.DLL EXITS HERE - Execution continues with EE game
+        ; EEex.DLL EXITS HERE
         ;----------------------------------------------------------------------
+        Invoke TerminateProcess, hEEGameProcess, NULL
         ret ; Exit EEexInitDll        
     .ENDIF
     ;--------------------------------------------------------------------------
@@ -1259,6 +1265,7 @@ EEEX_ALIGN
 ;------------------------------------------------------------------------------
 EEexPatchLocation PROC USES EBX
     LOCAL pPatternEntry:DWORD
+    LOCAL nPattern:DWORD
     
     IFDEF DEBUG32
     PrintText 'EEexPatchLocation'
@@ -1281,6 +1288,33 @@ EEexPatchLocation PROC USES EBX
     .ELSE
         mov eax, 0
     .ENDIF
+    
+    .IF eax == 0 ; do a full search of pattern database, in case PatchLocation is not at position 0
+        mov ebx, PatternsDatabase
+        mov pPatternEntry, ebx
+        
+        mov nPattern, 0
+        mov eax, 0
+        .WHILE eax < TotalPatterns
+            mov ebx, pPatternEntry
+            mov eax, [ebx].PATTERN.PatName
+            .IF eax != 0
+                mov ebx, eax
+                mov eax, [ebx]
+                mov ebx, [ebx+4]
+                .IF eax == 'ctaP' && ebx == 'coLh' ; Patc hLoc
+                    mov ebx, pPatternEntry
+                    mov eax, [ebx].PATTERN.PatAddress
+                    ret ; return with patch address location
+                .ENDIF
+            .ENDIF
+            add pPatternEntry, SIZEOF PATTERN
+            inc nPattern
+            mov eax, nPattern
+        .ENDW
+        mov eax, 0 ; didnt find patch location at all in whole pattern database
+    .ENDIF
+    
     ret
 EEexPatchLocation ENDP
 

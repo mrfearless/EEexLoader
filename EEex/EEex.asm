@@ -106,6 +106,7 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
     LOCAL lenEEGame:DWORD
     LOCAL lenOverride:DWORD
     LOCAL bMissingOverrides:DWORD
+    LOCAL childconsolesize:COORD
     
     mov bMissingOverrides, FALSE
     mov bEEGameFound, FALSE
@@ -532,17 +533,17 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
         mov SecuAttr.lpSecurityDescriptor, NULL
         mov SecuAttr.bInheritHandle, TRUE
         
-        Invoke CreatePipe, Addr hChildStd_OUT_Rd, Addr hChildStd_OUT_Wr, Addr SecuAttr, NULL 
+        Invoke CreatePipe, Addr hChildStd_OUT_Rd, Addr hChildStd_OUT_Wr, Addr SecuAttr, 0 
         Invoke SetHandleInformation, hChildStd_OUT_Rd, HANDLE_FLAG_INHERIT, 0
         
-        Invoke CreatePipe, Addr hChildStd_IN_Rd, Addr hChildStd_IN_Wr, Addr SecuAttr, NULL
+        Invoke CreatePipe, Addr hChildStd_IN_Rd, Addr hChildStd_IN_Wr, Addr SecuAttr, 0
         Invoke SetHandleInformation, hChildStd_IN_Wr, HANDLE_FLAG_INHERIT, 0
         
         mov eax, hChildStd_OUT_Wr
         mov startinfo.hStdError, eax
         mov startinfo.hStdOutput, eax
         mov eax, hChildStd_IN_Rd
-        mov startinfo.hStdInput, eax
+        mov startinfo.hStdInput, NULL ;eax
         mov startinfo.dwFlags, STARTF_USESTDHANDLES
     .ELSE
         IFDEF DEBUG32
@@ -593,6 +594,10 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
             ;------------------------------------------------------------------
             ; Redirect EE game output to our allocated console
             ;------------------------------------------------------------------
+            ;mov childconsolesize.x, 80
+            ;mov childconsolesize.y, 1
+            ;Invoke SetConsoleScreenBufferSize, hChildStd_OUT_Rd, Addr childconsolesize
+            
             Invoke ConsoleText, Addr szStatusEntry
             Invoke ConsoleText, Addr szStatusRedirectCon
             Invoke ConsoleText, Addr szCRLF

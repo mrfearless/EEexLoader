@@ -25,7 +25,7 @@ szLogFile               DB MAX_PATH DUP (0)
 szParameter1Buffer      DB MAX_PATH DUP (0)
 CmdLineParameters       DB 512 DUP (0)
 
-PIPEBUFFER              DB 4096 DUP (0)
+PIPEBUFFER              DB 4096 DUP (0) ;4096 DUP (0) - modified to 1 char as console output was cutting off/lagging until it 'filled' buffer size
 
 
 .DATA?
@@ -239,11 +239,14 @@ ReadFromPipe PROC
     LOCAL dwRead:DWORD
     LOCAL dwWritten:DWORD
     LOCAL hParentStdOut:DWORD
+    LOCAL hParentStdErr:DWORD
     LOCAL bSuccess:DWORD
 
     mov bSuccess, FALSE
     Invoke GetStdHandle, STD_OUTPUT_HANDLE
     mov hParentStdOut, eax
+    Invoke GetStdHandle, STD_ERROR_HANDLE
+    mov hParentStdErr, eax
 
     .WHILE TRUE
         Invoke GetExitCodeProcess, pi.hProcess, Addr ExitCode
@@ -267,7 +270,17 @@ ReadFromPipe PROC
             ret
         .ENDIF
         
-        ;Invoke Sleep, 100
+;        .IF dwWritten != 0
+;            Invoke FlushFileBuffers, hChildStd_OUT_Rd
+;            Invoke FlushFileBuffers, hParentStdOut
+;        .ENDIF
+        
+;        Invoke FlushFileBuffers, hLogFile
+
+;        Invoke FlushFileBuffers, hChildStd_OUT_Wr
+;        Invoke FlushFileBuffers, hParentStdOut
+;        Invoke FlushFileBuffers, hParentStdErr
+        Invoke Sleep, 100
         
     .ENDW
     

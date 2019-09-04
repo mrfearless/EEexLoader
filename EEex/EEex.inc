@@ -44,7 +44,7 @@ EEEX_ALIGN              TEXTEQU <ALIGN 16>
 ;------------------------------------------------------------------------------
 AppName                 DB "EEex loader",0
 szAppName               DB "[EEex loader]",0
-szAppVersion            DB " v1.0.0.13",0
+szAppVersion            DB " v1.0.0.15",0
 szEEexLoaderByfearless  DB "EEex loader by fearless: github.com/mrfearless/EEexLoader",0
 szEEexByBubb            DB "EEex by Bubb: github.com/Bubb13/EEex",0
 szCRLF                  DB 13,10,0
