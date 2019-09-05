@@ -11,14 +11,14 @@
 option casemap:none
 include \masm32\macros\macros.asm
 
-;DEBUG32 EQU 1
-;IFDEF DEBUG32
-;    PRESERVEXMMREGS equ 1
-;    includelib M:\Masm32\lib\Debug32.lib
-;    DBG32LIB equ 1
-;    DEBUGEXE textequ <'M:\Masm32\DbgWin.exe'>
-;    include M:\Masm32\include\debug32.inc
-;ENDIF
+DEBUG32 EQU 1
+IFDEF DEBUG32
+    PRESERVEXMMREGS equ 1
+    includelib M:\Masm32\lib\Debug32.lib
+    DBG32LIB equ 1
+    DEBUGEXE textequ <'M:\Masm32\DbgWin.exe'>
+    include M:\Masm32\include\debug32.inc
+ENDIF
 
 
 
@@ -543,7 +543,7 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
         mov startinfo.hStdError, eax
         mov startinfo.hStdOutput, eax
         mov eax, hChildStd_IN_Rd
-        mov startinfo.hStdInput, NULL ;eax
+        mov startinfo.hStdInput, eax ;NULL ;
         mov startinfo.dwFlags, STARTF_USESTDHANDLES
     .ELSE
         IFDEF DEBUG32
@@ -716,6 +716,10 @@ InjectDLL PROC hProcess:HANDLE, szDLLPath:DWORD
     LOCAL dwRemoteThreadID:DWORD  
     LOCAL dwExitCode:DWORD
 
+    IFDEF DEBUG32
+    PrintText 'InjectDLL'
+    ENDIF   
+
     Invoke lstrlen, szDLLPath
     mov szLibPathSize, eax
 
@@ -809,6 +813,10 @@ InjectDLL PROC hProcess:HANDLE, szDLLPath:DWORD
         mov eax, FALSE
         ret
     .ENDIF
+    
+    IFDEF DEBUG32
+    PrintText 'WaitForSingleObject'
+    ENDIF  
     
     Invoke WaitForSingleObject, hRemoteThread, INFINITE
 

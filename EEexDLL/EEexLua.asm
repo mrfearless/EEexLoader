@@ -28,12 +28,15 @@ EEex_ExposeToLua        PROTO C :VARARG         ; (lua_State), FunctionAddress, 
 EEex_Call               PROTO C :VARARG         ; (lua_State)
 
 EEex_AddressList        PROTO C :DWORD          ; (lua_State)
-;EEex_ReadDWORD          PROTO C :DWORD, :DWORD  ; (lua_State), dwAddress
+EEex_ReadDWORD          PROTO C :DWORD, :DWORD  ; (lua_State), dwAddress
 
 IFDEF EEEX_LUALIB       ; use this internal one rather than static version as it crashes
 lua_setglobalx          PROTO C :DWORD, :DWORD  ; (lua_State), Name
 ENDIF
+l_log_print             PROTO C :VARARG         ; (lua_State)
 
+SDL_Log PROTO C :VARARG
+EXTERNDEF SDL_Log :PROTO C :VARARG
 
 
 ;------------------------------------------------------------------------------
@@ -105,7 +108,15 @@ EEexLuaInit PROC C lua_State:DWORD, lpszString:DWORD
         Invoke F_LuaL_loadstring, lua_State, lpszString ; EE lua function
         ret
     .ENDIF    
-    
+
+;    IFDEF DEBUG32
+;    PrintText 'redirecting print'
+;    ENDIF
+;    Invoke F_Lua_getglobal, g_lua, CTEXT("print")
+;    Invoke F_Lua_pushcclosure, g_lua, Addr l_log_print, 0
+;    Invoke F_Lua_setglobal, g_lua, CTEXT("print")
+
+
     ;---------------------------
     ; For prototype of no params
     ;---------------------------
@@ -756,5 +767,76 @@ EEex_AddressListCount PROC C lua_State:DWORD
     ret
 EEex_AddressListCount ENDP
 
+
+
+EEEX_ALIGN
+;------------------------------------------------------------------------------
+; [LUA] l_log_print
+; Taken from EE game's lua "Print" function
+;------------------------------------------------------------------------------
+OPTION PROLOGUE:NONE
+OPTION EPILOGUE:NONE
+l_log_print PROC C arg:VARARG
+
+    IFDEF DEBUG32
+    PrintText 'l_log_print'
+    ENDIF
+
+    push ebp
+    mov ebp,esp
+    push ebx
+    push esi
+    push edi
+    mov edi,dword ptr [ebp+8h]
+    push edi
+    call F_Lua_gettop
+    mov ebx,eax
+    mov esi,1h
+    add esp,4h
+    cmp ebx,esi
+    jl LABEL_0x00516DCA
+    lea ecx,dword ptr [ecx]
+    
+LABEL_0x00516D90:
+    push esi
+    push edi
+    ;call lua_isstring
+    ;add esp,8h
+    mov eax, 1
+    test eax,eax
+    je LABEL_0x00516DAF
+    push 0h
+    push esi
+    push edi
+    call F_Lua_tolstring
+    push eax
+    push CTEXT("LPRINT: %s")
+    jmp LABEL_0x00516DBD
+    
+LABEL_0x00516DAF:
+    push esi
+    push edi
+    call F_Lua_typename
+    push eax
+    push esi
+    push CTEXT("Unable to convert arg %d a %s to string")
+    
+LABEL_0x00516DBD:
+    call F_SDL_Log ;SDL_Log
+    inc esi
+    add esp,14h
+    cmp esi,ebx
+    jle LABEL_0x00516D90
+    
+LABEL_0x00516DCA:
+    pop edi
+    pop esi
+    xor eax,eax
+    pop ebx
+    pop ebp
+    ret 
+l_log_print ENDP
+OPTION PROLOGUE:PrologueDef
+OPTION EPILOGUE:EpilogueDef
 
 

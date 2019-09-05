@@ -15,7 +15,7 @@ EEEX_ALIGN TEXTEQU <ALIGN 16>
 EEEX_LOGGING EQU 1 ; comment out if we dont require logging
 ;EEEX_LUALIB EQU 1 ; comment out to use lua function found in EE game. Otherwise use some lua functions from static lib
 
-
+;
 ;DEBUG32 EQU 1
 ;IFDEF DEBUG32
 ;    PRESERVEXMMREGS equ 1
@@ -149,7 +149,6 @@ EEexInitDll PROC USES EBX
                     Invoke LogClose
                 .ENDIF
                 ENDIF
-                Invoke TerminateProcess, hEEGameProcess, NULL
                 ret ; Exit EEexInitDll
             .ENDIF
         .ELSE ; IMAGE_DOS_SIGNATURE Failed
@@ -160,7 +159,6 @@ EEexInitDll PROC USES EBX
                 Invoke LogClose
             .ENDIF
             ENDIF
-            Invoke TerminateProcess, hEEGameProcess, NULL
             ret ; Exit EEexInitDll
         .ENDIF
     .ELSE ; GetModuleInformation Failed
@@ -171,7 +169,6 @@ EEexInitDll PROC USES EBX
             Invoke LogClose
         .ENDIF
         ENDIF
-        Invoke TerminateProcess, hEEGameProcess, NULL
         ret ; Exit EEexInitDll
     .ENDIF
     ;--------------------------------------------------------------------------
@@ -236,9 +233,8 @@ EEexInitDll PROC USES EBX
                 Invoke MessageBox, 0, Addr szErrorSearchFunctions, Addr AppName, MB_OK
             .ENDIF
             ;--------------------------------------------------------------
-            ; EEex.DLL EXITS HERE
+            ; EEex.DLL EXITS HERE - Execution continues with EE game
             ;--------------------------------------------------------------
-            Invoke TerminateProcess, hEEGameProcess, NULL
             ret ; Exit EEexInitDll
         .ENDIF
     .ELSE ; Functions verified, no need for search
@@ -293,9 +289,8 @@ EEexInitDll PROC USES EBX
                 Invoke MessageBox, 0, Addr szErrorPatchFailure, Addr AppName, MB_OK
             .ENDIF
             ;------------------------------------------------------------------
-            ; EEex.DLL EXITS HERE
+            ; EEex.DLL EXITS HERE - Execution continues with EE game
             ;------------------------------------------------------------------
-            Invoke TerminateProcess, hEEGameProcess, NULL
             ret ; Exit EEexInitDll                   
         .ENDIF
     .ELSE
@@ -309,9 +304,8 @@ EEexInitDll PROC USES EBX
             Invoke MessageBox, 0, Addr szErrorPatchLocation, Addr AppName, MB_OK
         .ENDIF
         ;----------------------------------------------------------------------
-        ; EEex.DLL EXITS HERE
+        ; EEex.DLL EXITS HERE - Execution continues with EE game
         ;----------------------------------------------------------------------
-        Invoke TerminateProcess, hEEGameProcess, NULL
         ret ; Exit EEexInitDll        
     .ENDIF
     ;--------------------------------------------------------------------------
@@ -399,6 +393,8 @@ EEexInitGlobals PROC USES EBX
     mov F_LoadLibrary, eax
     Invoke GetProcAddress, 0, Addr szSDL_FreeExport
     mov F_SDL_free, eax
+    Invoke GetProcAddress, 0, Addr szSDL_LogExport
+    mov F_SDL_Log, eax
     
     IFDEF DEBUG32
     PrintText 'Api calls and exports'

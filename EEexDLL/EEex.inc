@@ -17,9 +17,9 @@ includelib psapi.lib
 includelib version.lib
 
 IFDEF EEEX_LUALIB
-include lua52.inc
-includelib lua523.lib ; nil value for lua_setglobal
-includelib msvcrt12.lib
+;include lua52.inc
+;includelib lua523.lib ; nil value for lua_setglobal
+;includelib msvcrt12.lib
 ENDIF
 
 ;------------------------------------------------------------------------------
@@ -184,6 +184,7 @@ szGetProcAddressProc            DB "GetProcAddress",0
 szLoadLibraryProc               DB "LoadLibraryA",0
 szSDL_Free                      DB "_SDL_free",0
 szSDL_FreeExport                DB "SDL_free",0
+szSDL_LogExport                 DB "SDL_Log",0
 szKernel32Dll                   DB "kernel32.dll",0
 
 

@@ -146,6 +146,7 @@ F_Lua_type              Lua_typePtr 0
 F_Lua_typename          Lua_typenamePtr 0
 F_LuaL_loadstring       LuaL_loadstringPtr 0
 
+
 ;---------------------------
 ; Other function pointers
 ;---------------------------
@@ -153,7 +154,7 @@ F__ftol2_sse            ftol2_ssePtr 0
 F_GetProcAddress        DD 0 ; 
 F_LoadLibrary           DD 0 ;
 F_SDL_free              DD 0 ; SDL Export
-
+F_SDL_Log               DD 0 ; SDL Export
 
 ;---------------------------
 ; EE game global variables: 
