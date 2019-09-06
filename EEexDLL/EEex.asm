@@ -14,8 +14,8 @@ option casemap:none
 EEEX_ALIGN TEXTEQU <ALIGN 16>
 EEEX_LOGGING EQU 1 ; comment out if we dont require logging
 ;EEEX_LUALIB EQU 1 ; comment out to use lua function found in EE game. Otherwise use some lua functions from static lib
+EEEX_SDLINTERNAL EQU 1 ; comment out to use SDL_Log as found in EE game. Otherwise patch to use EEexSDL_Log
 
-;
 ;DEBUG32 EQU 1
 ;IFDEF DEBUG32
 ;    PRESERVEXMMREGS equ 1
@@ -39,7 +39,9 @@ include EEexPattern.asm ; Pattern array/table, function pointers, game globals,
 include EEexIni.asm     ; Ini functions, strings for sections and key names
 include EEexLog.asm     ; Log functions, strings for logging output
 include EEexLua.asm     ; EEexLuaInit, EEex_Init and other Lua functions used by EEex
-
+IFDEF EEEX_SDLINTERNAL
+include EEexPrint.asm   ; SDL_Log redirection functions
+ENDIF
 
 .CODE
 
@@ -251,19 +253,19 @@ EEexInitDll PROC USES EBX
 
 
     ;--------------------------------------------------------------------------
-    ; Apply Patch Stage (Call EEexLuaInit) - At PatchLocation In EE Game
+    ; Apply luaL_loadstring Patch Stage (Call EEexLuaInit) - At PatchLocation In EE Game
     ;--------------------------------------------------------------------------
     Invoke EEexPatchLocation
     mov PatchLocation, eax
     .IF PatchLocation != 0
-        Invoke EEexApplyCallPatch, PatchLocation ; (call EEexLuaInit)
+        Invoke EEexApplyCallPatch, PatchLocation, Addr EEexLuaInit, FALSE ; (call EEexLuaInit)
         .IF eax == TRUE ; Patch Success! - Write status to log and exit EEex.dll
             IFDEF DEBUG32
-            PrintText 'EEexApplyCallPatch Success'
+            PrintText 'EEexApplyCallPatch::luaL_loadstring Success'
             ENDIF
             IFDEF EEEX_LOGGING
             .IF gEEexLog >= LOGLEVEL_DETAIL
-                Invoke LogMessage, CTEXT("EEexApplyCallPatch:"), LOG_INFO, 0
+                Invoke LogMessage, CTEXT("EEexApplyCallPatch - [call luaL_loadstring] to [call EEexLuaInit]:"), LOG_INFO, 0
                 Invoke LogMessageAndHexValue, CTEXT("Applied patch at"), PatchLocation
                 Invoke LogMessage, 0, LOG_CRLF, 0
             .ENDIF
@@ -275,11 +277,11 @@ EEexInitDll PROC USES EBX
             ;------------------------------------------------------------------
         .ELSE ; Patch Failure! - Write status to log and exit EEex.dll
             IFDEF DEBUG32
-            PrintText 'EEexApplyCallPatch Failure'
+            PrintText 'EEexApplyCallPatch::luaL_loadstring Failure'
             ENDIF
             IFDEF EEEX_LOGGING
             .IF gEEexLog > LOGLEVEL_NONE
-                Invoke LogMessage, CTEXT("EEexApplyCallPatch:"), LOG_ERROR, 0
+                Invoke LogMessage, CTEXT("EEexApplyCallPatch::luaL_loadstring:"), LOG_ERROR, 0
                 Invoke LogMessageAndHexValue, CTEXT("Failed to apply patch at"), PatchLocation
                 Invoke LogMessage, 0, LOG_CRLF, 0
                 Invoke LogClose
@@ -309,12 +311,53 @@ EEexInitDll PROC USES EBX
         ret ; Exit EEexInitDll        
     .ENDIF
     ;--------------------------------------------------------------------------
-    ; Finished Apply Patch Stage
+    ; Finished luaL_loadstring Apply Patch Stage
     ;--------------------------------------------------------------------------
+
+
+    ;--------------------------------------------------------------------------
+    ; Apply SDL_LogMessageV Patch Stage (Call EEexSDL_LogMessageV) - At F_SDL_Log In EE Game
+    ;--------------------------------------------------------------------------
+    IFDEF EEEX_SDLINTERNAL
+    mov eax, F_SDL_Log
+    add eax, 14
+    mov PatchSDL_LogMessageV, eax
+    Invoke EEexApplyCallPatch, PatchSDL_LogMessageV, Addr EEexSDL_LogMessageV, FALSE ; (call EEexSDL_LogMessageV in SDL_Log)
+    ;Invoke EEexApplyCallPatch, F_SDL_Log, Addr EEexSDL_Log, TRUE ; (call EEexSDL_LogMessageV in SDL_Log)
+    
+    .IF eax == TRUE ; Patch Success! - Write status to log and exit EEex.dll
+        IFDEF DEBUG32
+        PrintText 'EEexApplyCallPatch::SDL_LogMessageV Success'
+        ENDIF
+        IFDEF EEEX_LOGGING
+        .IF gEEexLog >= LOGLEVEL_DETAIL
+            Invoke LogMessage, CTEXT("EEexApplyCallPatch - [call SDL_LogMessageV] to [call EEexSDL_LogMessageV]:"), LOG_INFO, 0
+            Invoke LogMessageAndHexValue, CTEXT("Applied patch at"), PatchSDL_LogMessageV
+            Invoke LogMessage, 0, LOG_CRLF, 0
+        .ENDIF
+        ENDIF
+    .ELSE ; Patch Failure! - Write status to log and exit EEex.dll
+        IFDEF DEBUG32
+        PrintText 'EEexApplyCallPatch::SDL_LogMessageV Failure'
+        ENDIF
+        IFDEF EEEX_LOGGING
+        .IF gEEexLog > LOGLEVEL_NONE
+            Invoke LogMessage, CTEXT("EEexApplyCallPatch::SDL_LogMessageV:"), LOG_ERROR, 0
+            Invoke LogMessageAndHexValue, CTEXT("Failed to apply patch at"), PatchSDL_LogMessageV
+            Invoke LogMessage, 0, LOG_CRLF, 0
+        .ENDIF
+        ENDIF
+    .ENDIF
+    ENDIF
+    ;--------------------------------------------------------------------------
+    ; Finished SDL_Log Apply Patch Stage
+    ;--------------------------------------------------------------------------
+
 
     Invoke EEexFunctionAddresses ; get function address for lua functions etc
     Invoke EEexVariableValues ; get pointers to game globals
     Invoke EEexLogInformation, INFO_ADDRESSES ; lists function and resolved global addresses
+
 
     ;--------------------------------------------------------------------------
     ; EEex.DLL EXITS HERE - Execution continues with EE game
@@ -395,6 +438,8 @@ EEexInitGlobals PROC USES EBX
     mov F_SDL_free, eax
     Invoke GetProcAddress, 0, Addr szSDL_LogExport
     mov F_SDL_Log, eax
+    Invoke GetProcAddress, 0, Addr szSDL_vsnprintfExport
+    mov F_SDL_vsnprintf, eax
     
     IFDEF DEBUG32
     PrintText 'Api calls and exports'
@@ -1554,10 +1599,11 @@ EEEX_ALIGN
 ; EEexApplyCallPatch - Patches EE Game to Call EEexLuaInit
 ; Returns: TRUE if succesful or FALSE otherwise.
 ;------------------------------------------------------------------------------
-EEexApplyCallPatch PROC USES EBX ESI dwAddressToPatch:DWORD
+EEexApplyCallPatch PROC USES EBX ESI dwAddressToPatch:DWORD, dwRedirectToFunction:DWORD, bReturn:DWORD
     LOCAL dwDistance:DWORD
     LOCAL dwOldProtect:DWORD
-
+    LOCAL LenToPatch:DWORD
+    
     IFDEF DEBUG32
     PrintText 'EEexApplyCallPatch'
     ENDIF  
@@ -1567,7 +1613,7 @@ EEexApplyCallPatch PROC USES EBX ESI dwAddressToPatch:DWORD
         ret
     .ENDIF
 
-    lea eax, EEexLuaInit
+    mov eax, dwRedirectToFunction
     mov ebx, dwAddressToPatch
     sub eax, ebx
     .IF eax == 0
@@ -1584,16 +1630,26 @@ EEexApplyCallPatch PROC USES EBX ESI dwAddressToPatch:DWORD
     .ENDIF
     mov dwDistance, eax
 
+    .IF bReturn == TRUE
+        mov LenToPatch, 6 ; call xxxxxxxx followed by ret C3h
+    .ELSE
+        mov LenToPatch, 5 ; call xxxxxxxx
+    .ENDIF
+
     ; VirtualProtect to write to address
-    Invoke VirtualProtectEx, hEEGameProcess, dwAddressToPatch, 5, PAGE_EXECUTE_READWRITE, Addr dwOldProtect
+    Invoke VirtualProtectEx, hEEGameProcess, dwAddressToPatch, LenToPatch, PAGE_EXECUTE_READWRITE, Addr dwOldProtect
     .IF eax != NULL
         mov esi, dwAddressToPatch
         mov byte ptr [esi], 0E8h ; call opcode
         inc esi
         mov eax, dwDistance
-        mov [esi], eax
+        mov [esi], eax ; call offset/distance
+        .IF bReturn == TRUE
+            add esi, 4
+            mov byte ptr [esi], 0C3h ; ret opcode
+        .ENDIF
         Invoke FlushInstructionCache, hEEGameProcess, NULL, NULL
-        Invoke VirtualProtectEx, hEEGameProcess, dwAddressToPatch, 5, dwOldProtect, Addr dwOldProtect
+        Invoke VirtualProtectEx, hEEGameProcess, dwAddressToPatch, LenToPatch, dwOldProtect, Addr dwOldProtect
         mov eax, TRUE
     .ELSE
         mov eax, FALSE

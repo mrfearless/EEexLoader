@@ -5,8 +5,10 @@
 ; https://forums.beamdog.com/discussion/71798/mod-eeex-v0-2-1-alpha/p1
 ;------------------------------------------------------------------------------
 
-EEEX_LOGLUACALLS        EQU 1 ; comment out to disable logging of the lua calls
+;EEEX_LOGLUACALLS        EQU 1 ; comment out to disable logging of the lua calls
                               ; requires gEEexLog >= LOGLEVEL_DEBUG if using
+;EEEX_LOGEEEXREGISTER    EQU 1 ; comment out to disable logging of EEex function
+                              ; registeration
                               
 ;------------------------------------------------------------------------------
 ; Devnote: Static lua lib functions that dont work/crash:
@@ -33,10 +35,10 @@ EEex_ReadDWORD          PROTO C :DWORD, :DWORD  ; (lua_State), dwAddress
 IFDEF EEEX_LUALIB       ; use this internal one rather than static version as it crashes
 lua_setglobalx          PROTO C :DWORD, :DWORD  ; (lua_State), Name
 ENDIF
-l_log_print             PROTO C :VARARG         ; (lua_State)
-
-SDL_Log PROTO C :VARARG
-EXTERNDEF SDL_Log :PROTO C :VARARG
+;EEex_Print              PROTO C :VARARG         ; (lua_State)
+;
+;SDL_Log PROTO C :VARARG
+;EXTERNDEF SDL_Log :PROTO C :VARARG
 
 
 ;------------------------------------------------------------------------------
@@ -59,6 +61,7 @@ szEEex_WriteByte        DB "EEex_WriteByte",0
 szEEex_ExposeToLua      DB "EEex_ExposeToLua",0
 szEEex_Call             DB "EEex_Call",0
 szEEex_AddressList      DB "EEex_AddressList",0
+szEEex_Print            DB "print",0
 ;szEEex_ReadDWORD        DB "EEex_ReadDWORD",0
 
 pAddressList            DD 0 ; points to array of ALENTRY entries x TotalPatterns 
@@ -143,8 +146,10 @@ EEexLuaInit PROC C lua_State:DWORD, lpszString:DWORD
     Invoke EEexLuaRegisterFunction, Addr EEex_Init, Addr szEEex_Init
     IFDEF EEEX_LOGGING
     .IF gEEexLog >= LOGLEVEL_DEBUG
+        IFDEF EEEX_LOGEEEXREGISTER
         Invoke LogMessage, CTEXT("Register Function -  EEex_Init"), LOG_NONEWLINE, 1
         Invoke LogMessageAndHexValue, 0, Addr EEex_Init
+        ENDIF
     .ENDIF    
     ENDIF    
     Invoke F_LuaL_loadstring, lua_State, lpszString ; EE lua function
@@ -181,37 +186,49 @@ EEex_Init PROC C arg:VARARG
     ENDIF
     IFDEF EEEX_LOGGING
     .IF gEEexLog >= LOGLEVEL_DEBUG
+        IFDEF EEEX_LOGEEEXREGISTER
         Invoke LogMessage, 0, LOG_CRLF, 0
         Invoke LogMessage, CTEXT("EEex_Init:"), LOG_INFO, 0
+        ENDIF
     .ENDIF
     ENDIF
     
     Invoke EEexLuaRegisterFunction, Addr EEex_WriteByte, Addr szEEex_WriteByte
     IFDEF EEEX_LOGGING
     .IF gEEexLog >= LOGLEVEL_DEBUG
+        IFDEF EEEX_LOGEEEXREGISTER
         Invoke LogMessage, CTEXT("Register Function -  EEex_WriteByte"), LOG_NONEWLINE, 1
         Invoke LogMessageAndHexValue, 0, Addr EEex_WriteByte
+        ENDIF
     .ENDIF
     ENDIF
     Invoke EEexLuaRegisterFunction, Addr EEex_ExposeToLua, Addr szEEex_ExposeToLua
     IFDEF EEEX_LOGGING
     .IF gEEexLog >= LOGLEVEL_DEBUG
+        IFDEF EEEX_LOGEEEXREGISTER
         Invoke LogMessage, CTEXT("Register Function -  EEex_ExposeToLua"), LOG_NONEWLINE, 1
         Invoke LogMessageAndHexValue, 0, Addr EEex_ExposeToLua
+        ENDIF
     .ENDIF
     ENDIF
     
     Invoke EEexLuaRegisterFunction, Addr EEex_Call, Addr szEEex_Call
     IFDEF EEEX_LOGGING
-    Invoke LogMessage, CTEXT("Register Function -  EEex_Call"), LOG_NONEWLINE, 1
-    Invoke LogMessageAndHexValue, 0, Addr EEex_Call
+    .IF gEEexLog >= LOGLEVEL_DEBUG
+        IFDEF EEEX_LOGEEEXREGISTER
+        Invoke LogMessage, CTEXT("Register Function -  EEex_Call"), LOG_NONEWLINE, 1
+        Invoke LogMessageAndHexValue, 0, Addr EEex_Call
+        ENDIF
+    .ENDIF
     ENDIF
 
     Invoke EEexLuaRegisterFunction, Addr EEex_AddressList, Addr szEEex_AddressList
     IFDEF EEEX_LOGGING
     .IF gEEexLog >= LOGLEVEL_DEBUG
+        IFDEF EEEX_LOGEEEXREGISTER
         Invoke LogMessage, CTEXT("Register Function -  EEex_AddressList"), LOG_NONEWLINE, 1
         Invoke LogMessageAndHexValue, 0, Addr EEex_AddressList
+        ENDIF
     .ENDIF
     ENDIF
 
@@ -222,28 +239,23 @@ EEex_Init PROC C arg:VARARG
 ;        Invoke LogMessageAndHexValue, 0, Addr EEex_ReadDWORD
 ;    .ENDIF
 ;    ENDIF
-    
-;    Invoke EEexLuaRegisterFunction, Addr EEex_AddressListAsm, Addr szEEex_AddressListAsm
+
+;    Invoke EEexLuaRegisterFunction, Addr EEex_Print, Addr szEEex_Print
 ;    IFDEF EEEX_LOGGING
 ;    .IF gEEexLog >= LOGLEVEL_DEBUG
-;        Invoke LogMessage, CTEXT("Register Function -  EEex_AddressListAsm"), LOG_NONEWLINE, 1
-;        Invoke LogMessageAndHexValue, 0, Addr EEex_AddressListAsm
+;        Invoke LogMessage, CTEXT("Register Function -  EEex_Print"), LOG_NONEWLINE, 1
+;        Invoke LogMessageAndHexValue, 0, Addr EEex_Print
 ;    .ENDIF
-;    ENDIF    
-;    
-;    Invoke EEexLuaRegisterFunction, Addr EEex_AddressListCount, Addr szEEex_AddressListCount
-;    IFDEF EEEX_LOGGING
-;    .IF gEEexLog >= LOGLEVEL_DEBUG
-;        Invoke LogMessage, CTEXT("Register Function -  EEex_AddressListCount"), LOG_NONEWLINE, 1
-;        Invoke LogMessageAndHexValue, 0, Addr EEex_AddressListCount
-;    .ENDIF
-;    ENDIF      
+;    ENDIF
+
 
     IFDEF EEEX_LOGGING
     .IF gEEexLog >= LOGLEVEL_DEBUG
+        IFDEF EEEX_LOGEEEXREGISTER
         Invoke LogMessage, 0, LOG_CRLF, 0
         Invoke LogMessage, CTEXT("VirtualAlloc 4096 bytes"), LOG_INFO, 0
         Invoke LogMessage, 0, LOG_CRLF, 0
+        ENDIF
     .ENDIF
     IFDEF EEEX_LOGLUACALLS
     .IF gEEexLog >= LOGLEVEL_DEBUG
@@ -768,75 +780,81 @@ EEex_AddressListCount PROC C lua_State:DWORD
 EEex_AddressListCount ENDP
 
 
-
-EEEX_ALIGN
-;------------------------------------------------------------------------------
-; [LUA] l_log_print
-; Taken from EE game's lua "Print" function
-;------------------------------------------------------------------------------
-OPTION PROLOGUE:NONE
-OPTION EPILOGUE:NONE
-l_log_print PROC C arg:VARARG
-
-    IFDEF DEBUG32
-    PrintText 'l_log_print'
-    ENDIF
-
-    push ebp
-    mov ebp,esp
-    push ebx
-    push esi
-    push edi
-    mov edi,dword ptr [ebp+8h]
-    push edi
-    call F_Lua_gettop
-    mov ebx,eax
-    mov esi,1h
-    add esp,4h
-    cmp ebx,esi
-    jl LABEL_0x00516DCA
-    lea ecx,dword ptr [ecx]
-    
-LABEL_0x00516D90:
-    push esi
-    push edi
-    ;call lua_isstring
-    ;add esp,8h
-    mov eax, 1
-    test eax,eax
-    je LABEL_0x00516DAF
-    push 0h
-    push esi
-    push edi
-    call F_Lua_tolstring
-    push eax
-    push CTEXT("LPRINT: %s")
-    jmp LABEL_0x00516DBD
-    
-LABEL_0x00516DAF:
-    push esi
-    push edi
-    call F_Lua_typename
-    push eax
-    push esi
-    push CTEXT("Unable to convert arg %d a %s to string")
-    
-LABEL_0x00516DBD:
-    call F_SDL_Log ;SDL_Log
-    inc esi
-    add esp,14h
-    cmp esi,ebx
-    jle LABEL_0x00516D90
-    
-LABEL_0x00516DCA:
-    pop edi
-    pop esi
-    xor eax,eax
-    pop ebx
-    pop ebp
-    ret 
-l_log_print ENDP
-OPTION PROLOGUE:PrologueDef
-OPTION EPILOGUE:EpilogueDef
+;EEEX_ALIGN
+;;------------------------------------------------------------------------------
+;; [LUA] EEex_Print
+;; Taken from EE game's lua "Print" function
+;;------------------------------------------------------------------------------
+;OPTION PROLOGUE:NONE
+;OPTION EPILOGUE:NONE
+;EEex_Print PROC C arg:VARARG
+;    push ebp
+;    mov ebp,esp
+;    
+;    IFDEF DEBUG32
+;    PrintText 'EEex_Print'
+;    ENDIF
+;    IFDEF EEEX_LOGGING
+;    IFDEF EEEX_LOGLUACALLS
+;    .IF gEEexLog >= LOGLEVEL_DEBUG
+;        Invoke LogMessage, Addr szEEex_Print, LOG_STANDARD, 1
+;    .ENDIF
+;    ENDIF
+;    ENDIF  
+;    
+;    push ebx
+;    push esi
+;    push edi
+;    mov edi,dword ptr [ebp+8h]
+;    push edi
+;    call F_Lua_gettop
+;    mov ebx,eax
+;    mov esi,1h
+;    add esp,4h
+;    cmp ebx,esi
+;    jl LABEL_0x00516DCA
+;    lea ecx,dword ptr [ecx]
+;    
+;LABEL_0x00516D90:
+;    push esi
+;    push edi
+;    ;call lua_isstring
+;    ;add esp,8h
+;    mov eax, 1
+;    test eax,eax
+;    je LABEL_0x00516DAF
+;    push 0h
+;    push esi
+;    push edi
+;    call F_Lua_tolstring
+;    push eax
+;    push CTEXT("LPRINT: %s")
+;    jmp LABEL_0x00516DBD
+;    
+;LABEL_0x00516DAF:
+;    push esi
+;    push edi
+;    call F_Lua_typename
+;    push eax
+;    push esi
+;    push CTEXT("Unable to convert arg %d a %s to string")
+;    
+;LABEL_0x00516DBD:
+;    call F_SDL_Log ;SDL_Log
+;    inc esi
+;    add esp,14h
+;    cmp esi,ebx
+;    jle LABEL_0x00516D90
+;    
+;LABEL_0x00516DCA:
+;    pop edi
+;    pop esi
+;    xor eax,eax
+;    pop ebx
+;    pop ebp
+;    ret 
+;EEex_Print ENDP
+;OPTION PROLOGUE:PrologueDef
+;OPTION EPILOGUE:EpilogueDef
 
 

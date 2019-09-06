@@ -236,50 +236,71 @@ EEEX_ALIGN
 ; Stop when there is no more data. 
 ;------------------------------------------------------------------------------
 ReadFromPipe PROC 
+    LOCAL dwTotalBytesToRead:DWORD
     LOCAL dwRead:DWORD
     LOCAL dwWritten:DWORD
-    LOCAL hParentStdOut:DWORD
-    LOCAL hParentStdErr:DWORD
     LOCAL bSuccess:DWORD
+    LOCAL nCount:DWORD
 
+    IFDEF DEBUG32
+    PrintText 'ReadFromPipe'
+    ENDIF
+
+    mov nCount, 0
     mov bSuccess, FALSE
-    Invoke GetStdHandle, STD_OUTPUT_HANDLE
-    mov hParentStdOut, eax
-    Invoke GetStdHandle, STD_ERROR_HANDLE
-    mov hParentStdErr, eax
 
     .WHILE TRUE
-        Invoke GetExitCodeProcess, pi.hProcess, Addr ExitCode
-        .IF ExitCode != STILL_ACTIVE
+        
+        Invoke GetExitCodeProcess, pi.hProcess, Addr ProcessExitCode
+        .IF eax == 0
+            IFDEF DEBUG32
+            PrintText 'GetExitCodeProcess error'
+            Invoke GetLastError
+            PrintDec eax
+            ENDIF
+        .ENDIF
+        .IF ProcessExitCode != STILL_ACTIVE
+            IFDEF DEBUG32
+            PrintText 'Exit from ReadFromPipe::GetExitCodeProcess'
+            ENDIF
             ret
         .ENDIF
         
-        Invoke ReadFile, hChildStd_OUT_Rd, Addr PIPEBUFFER, SIZEOF PIPEBUFFER, Addr dwRead, NULL
-        mov bSuccess, eax
-        .IF bSuccess == FALSE || dwRead == 0
-            ret
+        Invoke PeekNamedPipe, hChildStd_OUT_Rd, NULL, NULL, NULL, Addr dwTotalBytesToRead, NULL
+        .IF eax == 0
+            IFDEF DEBUG32
+            PrintText 'PeekNamedPipe Error'
+            Invoke GetLastError
+            PrintDec eax
+            ENDIF
         .ENDIF
         
-        .IF hLogFile != 0
-            Invoke WriteFile, hLogFile, Addr PIPEBUFFER, dwRead, Addr dwWritten, NULL
+        .IF dwTotalBytesToRead != 0
+            IFDEF DEBUG32
+            PrintDec dwTotalBytesToRead
+            ENDIF
+            Invoke ReadFile, hChildStd_OUT_Rd, Addr PIPEBUFFER, SIZEOF PIPEBUFFER, Addr dwRead, NULL
+            mov bSuccess, eax
+            .IF bSuccess == FALSE || dwRead == 0
+                IFDEF DEBUG32
+                PrintText 'Exit from ReadFromPipe::ReadFile'
+                ENDIF
+                ret
+            .ENDIF
+            
+            .IF hLogFile != 0
+                Invoke WriteFile, hLogFile, Addr PIPEBUFFER, dwRead, Addr dwWritten, NULL
+            .ENDIF
+            
+            Invoke WriteFile, hParentStdOut, Addr PIPEBUFFER, dwRead, Addr dwWritten, NULL
+            mov bSuccess, eax
+            .IF bSuccess == FALSE
+                IFDEF DEBUG32
+                PrintText 'Exit from ReadFromPipe::WriteFile'
+                ENDIF
+                ret
+            .ENDIF
         .ENDIF
-        
-        Invoke WriteFile, hParentStdOut, Addr PIPEBUFFER, dwRead, Addr dwWritten, NULL
-        mov bSuccess, eax
-        .IF bSuccess == FALSE
-            ret
-        .ENDIF
-        
-;        .IF dwWritten != 0
-;            Invoke FlushFileBuffers, hChildStd_OUT_Rd
-;            Invoke FlushFileBuffers, hParentStdOut
-;        .ENDIF
-        
-;        Invoke FlushFileBuffers, hLogFile
-
-;        Invoke FlushFileBuffers, hChildStd_OUT_Wr
-;        Invoke FlushFileBuffers, hParentStdOut
-;        Invoke FlushFileBuffers, hParentStdErr
         Invoke Sleep, 100
         
     .ENDW

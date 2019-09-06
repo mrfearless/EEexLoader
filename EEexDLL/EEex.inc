@@ -34,7 +34,7 @@ EEexSearchPatterns      PROTO                            ;
 
 EEexPatchLocation       PROTO                            ;
 EEexFunctionAddresses   PROTO                            ;
-EEexApplyCallPatch      PROTO :DWORD                     ; dwAddressToPatch
+EEexApplyCallPatch      PROTO :DWORD,:DWORD,:DWORD       ; dwAddressToPatch, dwRedirectToFunction, bReturn
 EEexVariableValues      PROTO                            ;
 
 EEexLogInformation      PROTO :DWORD                     ; dwType
@@ -185,6 +185,7 @@ szLoadLibraryProc               DB "LoadLibraryA",0
 szSDL_Free                      DB "_SDL_free",0
 szSDL_FreeExport                DB "SDL_free",0
 szSDL_LogExport                 DB "SDL_Log",0
+szSDL_vsnprintfExport           DB "SDL_vsnprintf",0
 szKernel32Dll                   DB "kernel32.dll",0
 
 

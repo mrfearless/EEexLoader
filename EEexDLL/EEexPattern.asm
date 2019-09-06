@@ -67,7 +67,7 @@ TYPE2_ARRAY_INITIAL_SIZE EQU (TYPE2_ARRAY_INITIAL_COUNT * SIZEOF DWORD)
 ; Patch location address 
 ;---------------------------
 PatchLocation           DD 0 ; call XXXEEgame:luaL_loadstring replaced with call EEex.dll:EEexLuaInit
-
+PatchSDL_LogMessageV    DD 0 ; 
 
 ;---------------------------
 ; Lua Function pointers
@@ -155,6 +155,9 @@ F_GetProcAddress        DD 0 ;
 F_LoadLibrary           DD 0 ;
 F_SDL_free              DD 0 ; SDL Export
 F_SDL_Log               DD 0 ; SDL Export
+SDL_vsnprintfProto      TYPEDEF PROTO C lpszOutput:DWORD, dwMaxLength:DWORD, lpszFmt:DWORD, valist:DWORD
+SDL_vsnprintfPtr        TYPEDEF PTR SDL_vsnprintfProto
+F_SDL_vsnprintf         SDL_vsnprintfPtr 0 ; SDL Export
 
 ;---------------------------
 ; EE game global variables: 
