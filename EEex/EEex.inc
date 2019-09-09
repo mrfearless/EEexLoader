@@ -18,14 +18,12 @@ includelib version.lib
 ;------------------------------------------------------------------------------
 ; EEex Prototypes
 ;------------------------------------------------------------------------------
-ProcessCmdLine          PROTO
 WinMain                 PROTO :DWORD, :DWORD, :DWORD, :DWORD
 EnumWindowsProc         PROTO :DWORD, :DWORD
 CheckFileVersion        PROTO :DWORD, :DWORD
 InjectDLL               PROTO :DWORD, :DWORD
-
 DisplayErrorMessage     PROTO :DWORD, :DWORD
-LogMessage              PROTO :DWORD
+IsEEGame64bit           PROTO :DWORD
 
 
 IFNDEF LANGANDCODEPAGE
@@ -35,8 +33,45 @@ LANGANDCODEPAGE         STRUCT
 LANGANDCODEPAGE         ENDS
 ENDIF
 
+IFNDEF IMAGE_DOS_HEADER
+IMAGE_DOS_HEADER STRUCT
+    e_magic      WORD ?
+    e_cblp       WORD ?
+    e_cp         WORD ?
+    e_crlc       WORD ?
+    e_cparhdr    WORD ?
+    e_minalloc   WORD ?
+    e_maxalloc   WORD ?
+    e_ss         WORD ?
+    e_sp         WORD ?
+    e_csum       WORD ?
+    e_ip         WORD ?
+    e_cs         WORD ?
+    e_lfarlc     WORD ?
+    e_ovno       WORD ?
+    e_res        WORD 4 dup(?)
+    e_oemid      WORD ?
+    e_oeminfo    WORD ?
+    e_res2       WORD 10 dup(?)
+    e_lfanew     DWORD ?
+IMAGE_DOS_HEADER ENDS
+ENDIF
+
+IFNDEF IMAGE_NT_HEADERS
+IMAGE_NT_HEADERS   STRUCT
+    Signature      DWORD                   ?
+    FileHeader     IMAGE_FILE_HEADER       <>
+    OptionalHeader IMAGE_OPTIONAL_HEADER32 <>
+IMAGE_NT_HEADERS   ENDS
+ENDIF
+
 .CONST
 EEEX_ALIGN              TEXTEQU <ALIGN 16>
+
+MZ_SIGNATURE            EQU 5A4Dh ; ZM - 'MZ'
+PE_SIGNATURE            EQU 4550h ; EP - 'PE'
+IMAGE_NT_OPTIONAL_HDR32_MAGIC   EQU 010Bh ; The file is an executable image.
+IMAGE_NT_OPTIONAL_HDR64_MAGIC   EQU 020Bh ; The file is an executable image.
 
 .DATA
 ;------------------------------------------------------------------------------
@@ -44,7 +79,7 @@ EEEX_ALIGN              TEXTEQU <ALIGN 16>
 ;------------------------------------------------------------------------------
 AppName                 DB "EEex loader",0
 szAppName               DB "[EEex loader]",0
-szAppVersion            DB " v1.0.0.18",0
+szAppVersion            DB " v1.0.0.19",0
 szEEexLoaderByfearless  DB "EEex loader by fearless: github.com/mrfearless/EEexLoader",0
 szEEexByBubb            DB "EEex by Bubb: github.com/Bubb13/EEex",0
 szCRLF                  DB 13,10,0
@@ -107,6 +142,12 @@ szErrorVerQueryValue    DB "CheckFileVersion: VerQueryValue failed.",0
 szErrorGetVersionSize   DB "CheckFileVersion: GetFileVersionInfoSizeA failed.",0
 szErrorHeap             DB "CheckFileVersion: GetProcessHeap failed.",0
 szErrorHeapAlloc        DB "CheckFileVersion: HeapAlloc failed.",0
+
+; EE Game 64bit Error Messages:
+szErrorEEGame64invalid  DB "The Beamdog Enhanced Edition game executable doesn't appear to be valid. ",0
+szErrorEEGame64error    DB "Cant open the Beamdog Enhanced Edition game executable. ",0
+szErrorEEGame64yes      DB "The Beamdog Enhanced Edition game executable is 64bit! Please use the 64bit EEex loader. ",0
+szErrorEEGame64no       DB "Detected 32bit Beamdog Enhanced Edition game executable. ",0
 
 ; InjectDLL Error Messages:
 szErrorVirtualAllocEx   DB "InjectDLL: VirtualAllocEx failed. ",0

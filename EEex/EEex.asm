@@ -50,52 +50,6 @@ start:
 
 EEEX_ALIGN
 ;------------------------------------------------------------------------------
-; ProcessCmdLine - process the command line
-;------------------------------------------------------------------------------
-ProcessCmdLine PROC
-;    LOCAL dwTotalParameters:DWORD
-;    LOCAL dwLenParam1:DWORD
-;    
-;    Invoke ConsoleParseCmdLine, Addr CmdLineParameters
-;    mov dwTotalParameters, eax
-;
-;    .IF eax == 1 ; only EEex.exe is specified on command line
-;        ret
-;        
-;    .ELSEIF eax == 2 ; EEex.exe and some other parameter 
-;        Invoke ConsoleCmdLineParam, Addr CmdLineParameters, 1, dwTotalParameters, Addr szParameter1Buffer
-;        
-;        Invoke GetCurrentDirectory, MAX_PATH, Addr szLogFile
-;        Invoke lstrcat, Addr szLogFile, Addr szBackslash
-;        Invoke lstrcat, Addr szLogFile, Addr szParameter1Buffer
-;        
-;        IFDEF DEBUG32
-;        PrintString szLogFile
-;        ENDIF
-;        
-;        Invoke CreateFile, Addr szLogFile, GENERIC_READ or GENERIC_WRITE, FILE_SHARE_WRITE or FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL
-;        .IF eax == INVALID_HANDLE_VALUE
-;            IFDEF DEBUG32
-;            Invoke GetLastError
-;            PrintDec eax
-;            ENDIF
-;            ret
-;        .ENDIF
-;
-;    .ENDIF
-;    
-;    mov hLogFile, eax
-;    
-;    IFDEF DEBUG32
-;    PrintDec hLogFile
-;    ENDIF
-;    
-;    xor eax, eax
-    ret
-ProcessCmdLine ENDP
-
-EEEX_ALIGN
-;------------------------------------------------------------------------------
 ; WinMain
 ;------------------------------------------------------------------------------
 WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdShow:DWORD
@@ -138,19 +92,8 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
         Invoke ConsoleText, Addr szEEexByBubb
         Invoke ConsoleText, Addr szCRLF
         Invoke ConsoleText, Addr szCRLF
-;        Invoke LogMessage, Addr szAppName
-;        Invoke LogMessage, Addr szAppVersion
-;        Invoke LogMessage, Addr szCRLF
-;        Invoke LogMessage, Addr szCRLF
-;        Invoke LogMessage, Addr szInfoEntry
-;        Invoke LogMessage, Addr szEEexLoaderByfearless
-;        Invoke LogMessage, Addr szCRLF
-;        Invoke LogMessage, Addr szInfoEntry
-;        Invoke LogMessage, Addr szEEexByBubb        
-;        Invoke LogMessage, Addr szCRLF
-;        Invoke LogMessage, Addr szCRLF
     .ENDIF
-    
+
 
     ;--------------------------------------------------------------------------
     ; Check EE game is not already running
@@ -162,9 +105,8 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
             Invoke ConsoleText, Addr szErrorEntry
             Invoke ConsoleText, Addr szErrorEEGameRunning
             Invoke ConsoleText, Addr szCRLF
-;            Invoke LogMessage, Addr szErrorEntry
-;            Invoke LogMessage, Addr szErrorEEGameRunning
-;            Invoke LogMessage, Addr szCRLF
+            Invoke ConsoleSendEnterKey
+            Invoke FreeConsole
         .ELSE
             Invoke DisplayErrorMessage, Addr szErrorEEGameRunning, 0
         .ENDIF
@@ -173,8 +115,8 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
     IFDEF DEBUG32
     PrintText 'Check EE game is not already running'
     ENDIF
-    
-    
+
+
     ;--------------------------------------------------------------------------
     ; Search for known EE game executables and check file version
     ;--------------------------------------------------------------------------
@@ -191,9 +133,8 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
                 Invoke ConsoleText, Addr szErrorEntry
                 Invoke ConsoleText, Addr szErrorBeamdog_BGEE
                 Invoke ConsoleText, Addr szCRLF
-;                Invoke LogMessage, Addr szErrorEntry
-;                Invoke LogMessage, Addr szErrorBeamdog_BGEE
-;                Invoke LogMessage, Addr szCRLF
+                Invoke ConsoleSendEnterKey
+                Invoke FreeConsole
             .ELSE
                 Invoke DisplayErrorMessage, Addr szErrorBeamdog_BGEE, 0
             .ENDIF
@@ -203,11 +144,13 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
         mov bEEGameFound, TRUE
         lea eax, szBeamdog_BGEE
         mov lpszEEGame, eax
+    .ELSE
+        IFDEF DEBUG32
+        PrintText 'No BGEE'
+        ENDIF
     .ENDIF
-    IFDEF DEBUG32
-    PrintText 'No BGEE'
-    ENDIF
-    
+
+
     ; BG2EE
     .IF bEEGameFound == FALSE
         Invoke FindFirstFile, Addr szBeamdog_BG2EE, Addr wfd
@@ -222,9 +165,8 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
                     Invoke ConsoleText, Addr szErrorEntry
                     Invoke ConsoleText, Addr szErrorBeamdog_BG2EE
                     Invoke ConsoleText, Addr szCRLF
-;                    Invoke LogMessage, Addr szErrorEntry
-;                    Invoke LogMessage, Addr szErrorBeamdog_BG2EE
-;                    Invoke LogMessage, Addr szCRLF
+                    Invoke ConsoleSendEnterKey
+                    Invoke FreeConsole
                 .ELSE
                     Invoke DisplayErrorMessage, Addr szErrorBeamdog_BG2EE, 0
                 .ENDIF
@@ -234,12 +176,14 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
             mov bEEGameFound, TRUE
             lea eax, szBeamdog_BG2EE
             mov lpszEEGame, eax
+        .ELSE
+            IFDEF DEBUG32
+            PrintText 'No BG2EE'
+            ENDIF
         .ENDIF
     .ENDIF
-    IFDEF DEBUG32
-    PrintText 'No BG2EE'
-    ENDIF
-    
+
+
     ; BGSOD
     .IF bEEGameFound == FALSE
         Invoke FindFirstFile, Addr szBeamdog_BGSOD, Addr wfd
@@ -254,9 +198,8 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
                     Invoke ConsoleText, Addr szErrorEntry
                     Invoke ConsoleText, Addr szErrorBeamdog_BGSOD
                     Invoke ConsoleText, Addr szCRLF
-;                    Invoke LogMessage, Addr szErrorEntry
-;                    Invoke LogMessage, Addr szErrorBeamdog_BGSOD
-;                    Invoke LogMessage, Addr szCRLF
+                    Invoke ConsoleSendEnterKey
+                    Invoke FreeConsole
                 .ELSE
                     Invoke DisplayErrorMessage, Addr szErrorBeamdog_BGSOD, 0
                 .ENDIF
@@ -266,12 +209,14 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
             mov bEEGameFound, TRUE
             lea eax, szBeamdog_BGSOD
             mov lpszEEGame, eax
+        .ELSE
+            IFDEF DEBUG32
+            PrintText 'No BGSOD'
+            ENDIF
         .ENDIF
     .ENDIF
-    IFDEF DEBUG32
-    PrintText 'No BGSOD'
-    ENDIF
-    
+
+
     ; IWDEE
     .IF bEEGameFound == FALSE
         Invoke FindFirstFile, Addr szBeamdog_IWDEE, Addr wfd
@@ -286,9 +231,8 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
                     Invoke ConsoleText, Addr szErrorEntry
                     Invoke ConsoleText, Addr szErrorBeamdog_IWDEE
                     Invoke ConsoleText, Addr szCRLF
-;                    Invoke LogMessage, Addr szErrorEntry
-;                    Invoke LogMessage, Addr szErrorBeamdog_IWDEE
-;                    Invoke LogMessage, Addr szCRLF
+                    Invoke ConsoleSendEnterKey
+                    Invoke FreeConsole
                 .ELSE
                     Invoke DisplayErrorMessage, Addr szErrorBeamdog_IWDEE, 0
                 .ENDIF
@@ -298,12 +242,14 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
             mov bEEGameFound, TRUE
             lea eax, szBeamdog_IWDEE
             mov lpszEEGame, eax
+        .ELSE
+            IFDEF DEBUG32
+            PrintText 'No IWDEE'
+            ENDIF
         .ENDIF
     .ENDIF
-    IFDEF DEBUG32
-    PrintText 'No IWDEE'
-    ENDIF
-    
+
+
     ; PSTEE
     .IF bEEGameFound == FALSE
         Invoke FindFirstFile, Addr szBeamdog_PSTEE, Addr wfd
@@ -318,9 +264,8 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
                     Invoke ConsoleText, Addr szErrorEntry
                     Invoke ConsoleText, Addr szErrorBeamdog_PSTEE
                     Invoke ConsoleText, Addr szCRLF
-;                    Invoke LogMessage, Addr szErrorEntry
-;                    Invoke LogMessage, Addr szErrorBeamdog_PSTEE
-;                    Invoke LogMessage, Addr szCRLF
+                    Invoke ConsoleSendEnterKey
+                    Invoke FreeConsole
                 .ELSE
                     Invoke DisplayErrorMessage, Addr szErrorBeamdog_PSTEE, 0
                 .ENDIF
@@ -330,13 +275,14 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
             mov bEEGameFound, TRUE
             lea eax, szBeamdog_PSTEE
             mov lpszEEGame, eax
+        .ELSE
+            IFDEF DEBUG32
+            PrintText 'No PSTEE'
+            ENDIF
         .ENDIF
     .ENDIF
-    IFDEF DEBUG32
-    PrintText 'No PSTEE'
-    ENDIF
-    
-    
+
+
     ;--------------------------------------------------------------------------
     ; Have we found any EE game exe? Display error message and exit if not
     ;--------------------------------------------------------------------------
@@ -348,16 +294,15 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
             Invoke ConsoleText, Addr szErrorEntry
             Invoke ConsoleText, Addr szErrorEEGameEXE
             Invoke ConsoleText, Addr szCRLF
-;            Invoke LogMessage, Addr szErrorEntry
-;            Invoke LogMessage, Addr szErrorEEGameEXE
-;            Invoke LogMessage, Addr szCRLF
+            Invoke ConsoleSendEnterKey
+            Invoke FreeConsole
         .ELSE
             Invoke DisplayErrorMessage, Addr szErrorEEGameEXE, 0
         .ENDIF
         ret 
     .ENDIF
-    
-    
+
+
     ;--------------------------------------------------------------------------
     ; Check EEex.dll is present? Display error message and exit if not
     ;--------------------------------------------------------------------------
@@ -376,16 +321,16 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
             Invoke ConsoleText, Addr szErrorEntry
             Invoke ConsoleText, Addr szErrorEEexDLLFind
             Invoke ConsoleText, Addr szCRLF
-;            Invoke LogMessage, Addr szErrorEntry
-;            Invoke LogMessage, Addr szErrorEEexDLLFind
-;            Invoke LogMessage, Addr szCRLF
+            Invoke ConsoleSendEnterKey
+            Invoke FreeConsole
         .ELSE
             Invoke DisplayErrorMessage, Addr szErrorEEexDLLFind, 0
         .ENDIF
         ret
     .ENDIF
     ENDIF
-    
+
+
     ;--------------------------------------------------------------------------
     ; check M__EEex.lua in override folder
     ;--------------------------------------------------------------------------    
@@ -410,16 +355,16 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
                 Invoke ConsoleText, Addr szErrorEntry
                 Invoke ConsoleText, Addr szErrorM__EEexMissing
                 Invoke ConsoleText, Addr szCRLF
-;                Invoke LogMessage, Addr szErrorEntry
-;                Invoke LogMessage, Addr szErrorM__EEexMissing
-;                Invoke LogMessage, Addr szCRLF
+                Invoke ConsoleSendEnterKey
+                Invoke FreeConsole
             .ELSE
                 Invoke DisplayErrorMessage, Addr szErrorM__EEexMissing, 0
             .ENDIF
             ret
         .ENDIF
     .ENDIF    
-    
+
+
     ;--------------------------------------------------------------------------
     ; check EEex.db in current folder
     ;--------------------------------------------------------------------------  
@@ -439,16 +384,16 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
                 Invoke ConsoleText, Addr szErrorEntry
                 Invoke ConsoleText, Addr szErrorEEexDBMissing
                 Invoke ConsoleText, Addr szCRLF
-;                Invoke LogMessage, Addr szErrorEntry
-;                Invoke LogMessage, Addr szErrorEEexDBMissing
-;                Invoke LogMessage, Addr szCRLF
+                Invoke ConsoleSendEnterKey
+                Invoke FreeConsole
             .ELSE
                 Invoke DisplayErrorMessage, Addr szErrorEEexDBMissing, 0
             .ENDIF
             ret
         .ENDIF
     .ENDIF    
-    
+
+
     ;--------------------------------------------------------------------------
     ; check UI.menu, TRIGGER.ids, OBJECT.ids and ACTION.ids in override folder
     ;--------------------------------------------------------------------------
@@ -506,9 +451,8 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
             Invoke ConsoleText, Addr szErrorEntry
             Invoke ConsoleText, Addr szErrorEEOverrideFiles
             Invoke ConsoleText, Addr szCRLF
-;            Invoke LogMessage, Addr szErrorEntry
-;            Invoke LogMessage, Addr szErrorEEOverrideFiles
-;            Invoke LogMessage, Addr szCRLF
+            Invoke ConsoleSendEnterKey
+            Invoke FreeConsole
         .ELSE
             Invoke DisplayErrorMessage, Addr szErrorEEOverrideFiles, 0
         .ENDIF
@@ -519,8 +463,8 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
         ENDIF
     .ENDIF
     ENDIF
-    
-    
+
+
     ;--------------------------------------------------------------------------
     ; Prepare Startup info for pipe redirection if EEex.exe started via console
     ;--------------------------------------------------------------------------
@@ -555,7 +499,58 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
         PrintText 'GUI mode - no console redirection'
         ENDIF    
     .ENDIF
+
+
+    ;--------------------------------------------------------------------------
+    ; Check EE game's executable is x86 and not x64
+    ;--------------------------------------------------------------------------
+    Invoke IsEEGame64bit, lpszEEGame
+    .IF eax == -2 ; invalid PE
+        .IF StartedMode == TRUE
+            Invoke ConsoleText, Addr szErrorEntry
+            Invoke ConsoleText, Addr szErrorEEGame64invalid
+            Invoke ConsoleText, Addr szCRLF
+            Invoke ConsoleSendEnterKey
+            Invoke FreeConsole
+        .ELSE
+            Invoke DisplayErrorMessage, Addr szErrorEEGame64invalid, 0
+        .ENDIF
+        ret
     
+    .ELSEIF eax == -1 ; error opening PE
+        .IF StartedMode == TRUE
+            Invoke ConsoleText, Addr szErrorEntry
+            Invoke ConsoleText, Addr szErrorEEGame64error
+            Invoke ConsoleText, Addr szCRLF
+            Invoke ConsoleSendEnterKey
+            Invoke FreeConsole
+        .ELSE
+            Invoke DisplayErrorMessage, Addr szErrorEEGame64error, 0
+        .ENDIF
+        ret
+        
+    .ELSEIF eax == 0
+        .IF StartedMode == TRUE
+            Invoke ConsoleText, Addr szStatusEntry
+            Invoke ConsoleText, Addr szErrorEEGame64no
+            Invoke ConsoleText, Addr szCRLF
+        .ENDIF
+        ; continue as normal as 32bit EE game is detected
+
+    .ELSEIF eax == 1
+        .IF StartedMode == TRUE
+            Invoke ConsoleText, Addr szErrorEntry
+            Invoke ConsoleText, Addr szErrorEEGame64yes
+            Invoke ConsoleText, Addr szCRLF
+            Invoke ConsoleSendEnterKey
+            Invoke FreeConsole
+        .ELSE
+            Invoke DisplayErrorMessage, Addr szErrorEEGame64yes, 0
+        .ENDIF
+        ret
+    .ENDIF
+
+
     ;--------------------------------------------------------------------------
     ; Launch EE game's executable, ready for injection of our EEex.dll
     ;--------------------------------------------------------------------------
@@ -567,10 +562,6 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
         Invoke ConsoleText, Addr szStatusLaunchingEEGame
         Invoke ConsoleText, lpszEEGame
         Invoke ConsoleText, Addr szCRLF
-;        Invoke LogMessage, Addr szStatusEntry
-;        Invoke LogMessage, Addr szStatusLaunchingEEGame
-;        Invoke LogMessage, lpszEEGame
-;        Invoke LogMessage, Addr szCRLF
     .ENDIF
     Invoke CreateProcess, lpszEEGame, NULL, NULL, NULL, TRUE, CREATE_SUSPENDED, NULL, NULL, Addr startinfo, Addr pi
     .IF eax != 0 ; CreateProcess success
@@ -587,9 +578,6 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
             Invoke ConsoleText, Addr szStatusEntry
             Invoke ConsoleText, Addr szStatusInjectingDLL
             Invoke ConsoleText, Addr szCRLF
-;            Invoke LogMessage, Addr szStatusEntry
-;            Invoke LogMessage, Addr szStatusInjectingDLL
-;            Invoke LogMessage, Addr szCRLF
         .ENDIF
         
         IFDEF DEBUG32
@@ -603,25 +591,11 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
             ;------------------------------------------------------------------
             ; Redirect EE game output to our allocated console
             ;------------------------------------------------------------------
-            ;mov childconsolesize.x, 80
-            ;mov childconsolesize.y, 1
-            ;Invoke SetConsoleScreenBufferSize, hChildStd_OUT_Rd, Addr childconsolesize
-
             Invoke ConsoleText, Addr szStatusEntry
             Invoke ConsoleText, Addr szStatusRedirectCon
             Invoke ConsoleText, Addr szCRLF
             Invoke ConsoleText, Addr szCRLF
-;            Invoke LogMessage, Addr szStatusEntry
-;            Invoke LogMessage, Addr szStatusRedirectCon
-;            Invoke LogMessage, Addr szCRLF
-;            Invoke LogMessage, Addr szCRLF
-            IFDEF DEBUG32
-            PrintText 'Calling ReadFromPipe'
-            ENDIF
             Invoke ReadFromPipe
-            IFDEF DEBUG32
-            PrintText 'Finished ReadFromPipe'
-            ENDIF
             Invoke ConsoleText, Addr szCRLF
             Invoke ConsoleSendEnterKey
             Invoke FreeConsole
@@ -633,9 +607,6 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
                 Invoke CloseHandle, hLogFile
             .ENDIF
         .ENDIF
-        IFDEF DEBUG32
-        PrintText 'CloseHandle pi.hThread and pi.hProcess'
-        ENDIF
         Invoke CloseHandle, pi.hThread
         Invoke CloseHandle, pi.hProcess
         .IF dwExitCode != TRUE
@@ -646,9 +617,8 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
             Invoke ConsoleText, Addr szErrorEntry
             Invoke ConsoleText, Addr szErrorEEGameExecute
             Invoke ConsoleText, Addr szCRLF
-;            Invoke LogMessage, Addr szErrorEntry
-;            Invoke LogMessage, Addr szErrorEEGameExecute
-;            Invoke LogMessage, Addr szCRLF
+            Invoke ConsoleSendEnterKey
+            Invoke FreeConsole
         .ELSE    
             Invoke GetLastError
             Invoke DisplayErrorMessage, Addr szErrorEEGameExecute, eax
@@ -747,9 +717,6 @@ InjectDLL PROC hProcess:HANDLE, szDLLPath:DWORD
             Invoke ConsoleText, Addr szErrorEntry
             Invoke ConsoleText, Addr szErrorVirtualAllocEx
             Invoke ConsoleText, Addr szCRLF
-;            Invoke LogMessage, Addr szErrorEntry
-;            Invoke LogMessage, Addr szErrorVirtualAllocEx
-;            Invoke LogMessage, Addr szCRLF
         .ELSE
             Invoke GetLastError
             Invoke DisplayErrorMessage, Addr szErrorVirtualAllocEx, eax
@@ -764,9 +731,6 @@ InjectDLL PROC hProcess:HANDLE, szDLLPath:DWORD
             Invoke ConsoleText, Addr szErrorEntry
             Invoke ConsoleText, Addr szErrorWriteProcessMem
             Invoke ConsoleText, Addr szCRLF
-;            Invoke LogMessage, Addr szErrorEntry
-;            Invoke LogMessage, Addr szErrorWriteProcessMem
-;            Invoke LogMessage, Addr szCRLF
         .ELSE
             Invoke GetLastError
             Invoke DisplayErrorMessage, Addr szErrorWriteProcessMem, eax
@@ -784,9 +748,6 @@ InjectDLL PROC hProcess:HANDLE, szDLLPath:DWORD
             Invoke ConsoleText, Addr szErrorEntry
             Invoke ConsoleText, Addr szErrorGetModuleHandle
             Invoke ConsoleText, Addr szCRLF
-;            Invoke LogMessage, Addr szErrorEntry
-;            Invoke LogMessage, Addr szErrorGetModuleHandle
-;            Invoke LogMessage, Addr szCRLF
         .ELSE
             Invoke GetLastError
             Invoke DisplayErrorMessage, Addr szErrorGetModuleHandle, eax
@@ -802,9 +763,6 @@ InjectDLL PROC hProcess:HANDLE, szDLLPath:DWORD
             Invoke ConsoleText, Addr szErrorEntry
             Invoke ConsoleText, Addr szErrorGetProcAddress
             Invoke ConsoleText, Addr szCRLF
-;            Invoke LogMessage, Addr szErrorEntry
-;            Invoke LogMessage, Addr szErrorGetProcAddress
-;            Invoke LogMessage, Addr szCRLF
         .ELSE
             Invoke GetLastError
             Invoke DisplayErrorMessage, Addr szErrorGetProcAddress, eax
@@ -820,9 +778,6 @@ InjectDLL PROC hProcess:HANDLE, szDLLPath:DWORD
             Invoke ConsoleText, Addr szErrorEntry
             Invoke ConsoleText, Addr szErrorRemoteThread
             Invoke ConsoleText, Addr szCRLF
-;            Invoke LogMessage, Addr szErrorEntry
-;            Invoke LogMessage, Addr szErrorRemoteThread
-;            Invoke LogMessage, Addr szCRLF
         .ELSE
             Invoke GetLastError
             Invoke DisplayErrorMessage, Addr szErrorRemoteThread, eax
@@ -985,22 +940,93 @@ ENDIF
 
 EEEX_ALIGN
 ;------------------------------------------------------------------------------
-; LogMessage
+; Checks if beamdog executable is 64bit - which means a newer game build and
+; thus would require a 64bit version of EEex.exe loader and the EEex.dll
+; Returns: eax contains 1 = 64bit, 0 = 32bit (x86), -1 = error, -2 = invalid
 ;------------------------------------------------------------------------------
-LogMessage PROC lpszLogText:DWORD
-;    LOCAL dwBytesToWrite:DWORD
-;    LOCAL dwBytesWritten:DWORD
-;    
-;    .IF hLogFile != 0 && lpszLogText != 0
-;        Invoke lstrlen, lpszLogText
-;        mov dwBytesToWrite, eax
-;        Invoke WriteFile, hLogFile, lpszLogText, dwBytesToWrite, Addr dwBytesWritten, NULL
-;        mov eax, dwBytesWritten
-;    .ELSE
-;        xor eax, eax
-;    .ENDIF
+IsEEGame64bit PROC USES EBX lpszEEGameExe:DWORD
+    LOCAL hFile:DWORD
+    LOCAL hMemMap:DWORD
+    LOCAL pMemMap:DWORD
+    LOCAL RetVal:DWORD
+    
+    mov RetVal, 0
+    
+    Invoke CreateFile, lpszEEGameExe, GENERIC_READ, FILE_SHARE_READ or FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL
+    .IF eax == INVALID_HANDLE_VALUE
+        IFDEF DEBUG32
+        PrintText 'IsEEGame64bit::CreateFile error'
+        ENDIF
+        mov eax, -1
+        ret
+    .ENDIF 
+    mov hFile, eax
+    
+    Invoke CreateFileMapping, hFile, NULL, PAGE_READONLY, 0, 0, NULL
+    .IF eax == NULL
+        IFDEF DEBUG32
+        PrintText 'IsEEGame64bit::CreateFileMapping error'
+        ENDIF    
+        Invoke CloseHandle, hFile
+        mov eax, -1
+        ret
+    .ENDIF
+    mov hMemMap, eax
+    
+    Invoke MapViewOfFileEx, hMemMap, FILE_MAP_READ, 0, 0, 0, NULL
+    .IF eax == NULL
+        IFDEF DEBUG32
+        PrintText 'IsEEGame64bit::MapViewOfFile error'
+        ENDIF    
+        Invoke CloseHandle, hMemMap
+        Invoke CloseHandle, hFile
+        mov eax, -1
+        ret
+    .ENDIF
+    mov pMemMap, eax ; store map view pointer
+    
+    
+    ; Check for valid PE and if 32bit or 64bit
+    mov ebx, pMemMap
+    movzx eax, word ptr [ebx].IMAGE_DOS_HEADER.e_magic
+    .IF ax == MZ_SIGNATURE
+        add ebx, [ebx].IMAGE_DOS_HEADER.e_lfanew
+        ; ebx is pointer to IMAGE_NT_HEADERS now
+        mov eax, [ebx].IMAGE_NT_HEADERS.Signature
+        .IF ax == PE_SIGNATURE
+            movzx eax, word ptr [ebx].IMAGE_NT_HEADERS.OptionalHeader.Magic
+            .IF ax == IMAGE_NT_OPTIONAL_HDR32_MAGIC
+                IFDEF DEBUG32
+                PrintText 'IsEEGame64bit::32bit'
+                ENDIF  
+                mov RetVal, 0 ; 32bit
+            .ELSEIF ax == IMAGE_NT_OPTIONAL_HDR64_MAGIC
+                IFDEF DEBUG32
+                PrintText 'IsEEGame64bit::64bit'
+                ENDIF
+                mov RetVal, 1 ; 64bit
+            .ENDIF
+        .ELSE
+            IFDEF DEBUG32
+            PrintText 'IsEEGame64bit::Invalid PE'
+            ENDIF
+            mov RetVal, -2 ; error invalid pe
+        .ENDIF
+    .ELSE
+        IFDEF DEBUG32
+        PrintText 'IsEEGame64bit::Invalid exe'
+        ENDIF
+        mov RetVal, -2 ; error invalid exe
+    .ENDIF
+    
+    ; Tidy up and close file
+    Invoke UnmapViewOfFile, pMemMap
+    Invoke CloseHandle, hMemMap
+    Invoke CloseHandle, hFile
+    
+    mov eax, RetVal
     ret
-LogMessage ENDP
+IsEEGame64bit ENDP
 
 
 

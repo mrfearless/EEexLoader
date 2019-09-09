@@ -89,7 +89,6 @@ EEexSDL_LogMessageV PROC C USES EBX category:DWORD, priority:DWORD, fmt:DWORD, a
         .ENDIF
     .ENDIF
     
-    ;Invoke wsprintf, Addr szLogMessageBuffer, lpszFmt, lpszString
     Invoke EEexSDL_LogOutput, priority, Addr szLogMessageBuffer
 
     ret
