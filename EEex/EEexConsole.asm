@@ -1,3 +1,5 @@
+ConsoleInit             PROTO
+ConsoleExit             PROTO
 ConsoleClearScreen      PROTO
 ConsoleText             PROTO :DWORD
 ConsoleStarted          PROTO
@@ -10,7 +12,7 @@ szBackslash             DB "\",0
 
 hLogFile                DD 0
 
-StartedMode             DD 0
+gConsoleStartedMode     DD 0
 
 dwBytesRead             DD 0 
 TotalBytesAvail         DD 0 
@@ -35,6 +37,29 @@ hChildStd_IN_Wr         DD ?
 
 .CODE
 
+
+EEEX_ALIGN
+;------------------------------------------------------------------------------
+; ConsoleInit
+;------------------------------------------------------------------------------
+ConsoleInit PROC
+    Invoke ConsoleAttach
+    Invoke ConsoleStarted
+    mov gConsoleStartedMode, eax
+    ret
+ConsoleInit ENDP
+
+EEEX_ALIGN
+;------------------------------------------------------------------------------
+; ConsoleExit
+;------------------------------------------------------------------------------
+ConsoleExit PROC
+    .IF gConsoleStartedMode == TRUE
+        Invoke ConsoleSendEnterKey
+        Invoke FreeConsole
+    .ENDIF
+    ret
+ConsoleExit ENDP
 
 EEEX_ALIGN
 ;------------------------------------------------------------------------------
