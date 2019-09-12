@@ -95,7 +95,6 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
         Invoke ConsoleText, Addr szCRLF
     .ENDIF
 
-
     ;--------------------------------------------------------------------------
     ; Check EE game is not already running
     ;--------------------------------------------------------------------------
@@ -114,7 +113,6 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
     IFDEF DEBUG32
     PrintText 'Check EE game is not already running'
     ENDIF
-
 
     ;--------------------------------------------------------------------------
     ; Search for known EE game executables and check file version
@@ -147,7 +145,6 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
         ENDIF
     .ENDIF
 
-
     ; BG2EE
     .IF bEEGameFound == FALSE
         Invoke FindFirstFile, Addr szBeamdog_BG2EE, Addr wfd
@@ -177,7 +174,6 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
             ENDIF
         .ENDIF
     .ENDIF
-
 
     ; BGSOD
     .IF bEEGameFound == FALSE
@@ -209,7 +205,6 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
         .ENDIF
     .ENDIF
 
-
     ; IWDEE
     .IF bEEGameFound == FALSE
         Invoke FindFirstFile, Addr szBeamdog_IWDEE, Addr wfd
@@ -239,7 +234,6 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
             ENDIF
         .ENDIF
     .ENDIF
-
 
     ; PSTEE
     .IF bEEGameFound == FALSE
@@ -271,7 +265,6 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
         .ENDIF
     .ENDIF
 
-
     ;--------------------------------------------------------------------------
     ; Have we found any EE game exe? Display error message and exit if not
     ;--------------------------------------------------------------------------
@@ -288,7 +281,6 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
         .ENDIF
         ret 
     .ENDIF
-
 
     ;--------------------------------------------------------------------------
     ; Check EEex.dll is present? Display error message and exit if not
@@ -314,7 +306,6 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
         ret
     .ENDIF
     ENDIF
-
 
     ;--------------------------------------------------------------------------
     ; check M__EEex.lua in override folder
@@ -347,7 +338,6 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
         .ENDIF
     .ENDIF    
 
-
     ;--------------------------------------------------------------------------
     ; check EEex.db in current folder
     ;--------------------------------------------------------------------------  
@@ -373,7 +363,6 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
             ret
         .ENDIF
     .ENDIF    
-
 
     ;--------------------------------------------------------------------------
     ; check UI.menu, TRIGGER.ids, OBJECT.ids and ACTION.ids in override folder
@@ -443,7 +432,6 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
     .ENDIF
     ENDIF
 
-
     ;--------------------------------------------------------------------------
     ; Prepare Startup info for pipe redirection if EEex.exe started via console
     ;--------------------------------------------------------------------------
@@ -478,7 +466,6 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
         PrintText 'GUI mode - no console redirection'
         ENDIF    
     .ENDIF
-
 
     ;--------------------------------------------------------------------------
     ; Check EE game's executable is x86 and not x64
@@ -523,7 +510,6 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
         ret
     .ENDIF
 
-
     ;--------------------------------------------------------------------------
     ; Launch EE game's executable, ready for injection of our EEex.dll
     ;--------------------------------------------------------------------------
@@ -551,40 +537,60 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
             Invoke ConsoleText, Addr szStatusEntry
             Invoke ConsoleText, Addr szStatusInjectingDLL
             Invoke ConsoleText, Addr szCRLF
+            Invoke ConsoleText, Addr szCRLF
         .ENDIF
         
         IFDEF DEBUG32
-        PrintText 'Injecting EEex.dll into EE game executable'
+        PrintText 'InjectDLL: Injecting EEex.dll into EE game executable'
         ENDIF
         Invoke InjectDLL, pi.hProcess, Addr szEEexDLL
-        mov dwExitCode, eax
-        Invoke ResumeThread, pi.hThread
+        ;mov dwExitCode, eax
+        .IF eax == TRUE
+            .IF gConsoleStartedMode == TRUE
+                Invoke ConsoleText, Addr szStatusEntry
+                Invoke ConsoleText, Addr szStatusResumeThread
+                Invoke ConsoleText, Addr szCRLF
+            .ENDIF
+            ;------------------------------------------------------------------
+            ; EE Game thread starts up
+            ;------------------------------------------------------------------
+            Invoke ResumeThread, pi.hThread
 
-        .IF gConsoleStartedMode == TRUE
+            .IF gConsoleStartedMode == TRUE
+                ;--------------------------------------------------------------
+                ; Redirect EE game output to our allocated console
+                ;--------------------------------------------------------------
+                Invoke ConsoleText, Addr szStatusEntry
+                Invoke ConsoleText, Addr szStatusRedirectCon
+                Invoke ConsoleText, Addr szCRLF
+                Invoke ConsoleText, Addr szCRLF
+                Invoke ReadFromPipe
+                Invoke ConsoleText, Addr szCRLF
+                ;Invoke ConsoleSendEnterKey
+                ;Invoke FreeConsole
+                Invoke CloseHandle, hChildStd_OUT_Rd
+                Invoke CloseHandle, hChildStd_OUT_Wr
+                Invoke CloseHandle, hChildStd_IN_Rd
+                Invoke CloseHandle, hChildStd_IN_Wr
+            .ENDIF
+            
             ;------------------------------------------------------------------
-            ; Redirect EE game output to our allocated console
+            ; Clean up handles and exit EEex.exe Loader
             ;------------------------------------------------------------------
-            Invoke ConsoleText, Addr szStatusEntry
-            Invoke ConsoleText, Addr szStatusRedirectCon
-            Invoke ConsoleText, Addr szCRLF
-            Invoke ConsoleText, Addr szCRLF
-            Invoke ReadFromPipe
-            Invoke ConsoleText, Addr szCRLF
-            ;Invoke ConsoleSendEnterKey
-            ;Invoke FreeConsole
-            Invoke CloseHandle, hChildStd_OUT_Rd
-            Invoke CloseHandle, hChildStd_OUT_Wr
-            Invoke CloseHandle, hChildStd_IN_Rd
-            Invoke CloseHandle, hChildStd_IN_Wr
-            .IF hLogFile != 0
-                Invoke CloseHandle, hLogFile
+            Invoke CloseHandle, pi.hThread
+            Invoke CloseHandle, pi.hProcess
+            
+        .ELSE
+            .IF gConsoleStartedMode == TRUE
+                Invoke ConsoleText, Addr szErrorEntry
+                Invoke ConsoleText, Addr szErrorInjectDLL
+                Invoke ConsoleText, Addr szCRLF
+            .ELSE    
+                Invoke GetLastError
+                Invoke DisplayErrorMessage, Addr szErrorInjectDLL, eax
             .ENDIF
         .ENDIF
-        Invoke CloseHandle, pi.hThread
-        Invoke CloseHandle, pi.hProcess
-        .IF dwExitCode != TRUE
-            ret
-        .ENDIF
+        
     .ELSE ; CreateProcess failed
         .IF gConsoleStartedMode == TRUE
             Invoke ConsoleText, Addr szErrorEntry
@@ -601,63 +607,6 @@ WinMain PROC USES EBX hInst:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdSh
     ret
 WinMain ENDP
 
-EEEX_ALIGN
-;------------------------------------------------------------------------------
-; EnumWindowsProc - enumerates all top-level windows
-; Search for SDLapp class and if found check window title for Beamdog EE game
-;------------------------------------------------------------------------------
-EnumWindowsProc PROC USES EBX hWindow:DWORD, lParam:DWORD
-    Invoke GetClassName, hWindow, Addr szClassName, SIZEOF szClassName
-    .IF eax != 0
-        lea ebx, szClassName
-        mov eax, [ebx]
-        .IF eax == 'aLDS' ; 'SDLa'pp reversed
-            Invoke GetWindowText, hWindow, Addr szWindowTitle, SIZEOF szWindowTitle
-            .IF eax != 0
-                lea ebx, szWindowTitle
-                mov eax, [ebx]
-                .IF eax == 'dalB' || eax == 'geiS' || eax == 'wecI' || eax == 'nalP' ; Bald, Sieg, Icew, Plan
-                    mov ebx, lParam
-                    mov eax, TRUE
-                    mov [ebx], eax
-                    mov eax, FALSE
-                    ret
-                .ENDIF
-            .ENDIF
-        .ENDIF
-    .ENDIF
-    mov eax, TRUE
-    ret
-EnumWindowsProc ENDP
-
-EEEX_ALIGN
-;------------------------------------------------------------------------------
-; Displays Error Messages
-;------------------------------------------------------------------------------
-DisplayErrorMessage PROC USES EDX szMessage:DWORD, dwError:DWORD
-    LOCAL lpError:DWORD
-    LOCAL nFormatLength:DWORD
-    LOCAL nMessageLength:DWORD
-    LOCAL szFormat[255]:BYTE
-    LOCAL pMessage[255]:BYTE
-    LOCAL dwLanguageId:DWORD
-
-    .IF dwError != 0
-        xor edx, edx
-        mov dl, SUBLANG_DEFAULT
-        shl edx, 10
-        or edx, LANG_NEUTRAL
-        mov dwLanguageId, edx ; dwLanguageId
-        Invoke FormatMessage, FORMAT_MESSAGE_ALLOCATE_BUFFER or FORMAT_MESSAGE_FROM_SYSTEM or FORMAT_MESSAGE_IGNORE_INSERTS, NULL, dwError, edx, Addr lpError, 0, NULL
-        Invoke wsprintf, Addr szErrorMessage, Addr szFormatErrorMessage, lpError
-        Invoke MessageBox, NULL, Addr szErrorMessage, Addr AppName, MB_OK
-        Invoke LocalFree, lpError
-    .ELSE
-        Invoke MessageBox, NULL, szMessage, Addr AppName, MB_OK
-    .ENDIF
-    xor eax, eax
-    ret
-DisplayErrorMessage ENDP
 
 EEEX_ALIGN
 ;------------------------------------------------------------------------------
@@ -673,15 +622,13 @@ InjectDLL PROC hProcess:HANDLE, szDLLPath:DWORD
     LOCAL hRemoteThread:DWORD
     LOCAL dwRemoteThreadID:DWORD  
     LOCAL dwExitCode:DWORD
-
-    IFDEF DEBUG32
-    PrintText 'InjectDLL'
-    ENDIF   
+    LOCAL ReturnVal:DWORD
 
     Invoke lstrlen, szDLLPath
+    inc eax
     mov szLibPathSize, eax
 
-    Invoke VirtualAllocEx, hProcess, NULL, szLibPathSize, MEM_COMMIT, PAGE_READWRITE
+    Invoke VirtualAllocEx, hProcess, NULL, szLibPathSize, MEM_COMMIT or MEM_RESERVE, PAGE_READWRITE
     mov lpLibAddress, eax
     .IF eax == NULL
         .IF gConsoleStartedMode == TRUE
@@ -742,6 +689,10 @@ InjectDLL PROC hProcess:HANDLE, szDLLPath:DWORD
         ret
     .ENDIF
 
+    IFDEF DEBUG32
+    PrintText 'InjectDLL::CreateRemoteThread'
+    ENDIF
+
     Invoke CreateRemoteThread, hProcess, NULL, 0, lpStartRoutine, lpLibAddress, 0, Addr dwRemoteThreadID
     mov hRemoteThread, eax
     .IF eax == NULL
@@ -758,50 +709,229 @@ InjectDLL PROC hProcess:HANDLE, szDLLPath:DWORD
     .ENDIF
     
     IFDEF DEBUG32
-    PrintText 'WaitForSingleObject'
-    ENDIF  
+    PrintText 'InjectDLL::WaitForSingleObject'
+    ENDIF
+    
+    .IF gConsoleStartedMode == TRUE
+        Invoke ConsoleText, Addr szCRLF
+    .ENDIF
     
     Invoke WaitForSingleObject, hRemoteThread, INFINITE
 
     .IF eax == WAIT_ABANDONED
+        .IF gConsoleStartedMode == TRUE
+            Invoke ConsoleText, Addr szErrorEntry
+            Invoke ConsoleText, Addr szErrorWaitAbandoned
+            Invoke ConsoleText, Addr szCRLF
+        .ENDIF
         
     .ELSEIF eax == WAIT_OBJECT_0
-
+        .IF gConsoleStartedMode == TRUE
+            Invoke ConsoleText, Addr szStatusEntry
+            Invoke ConsoleText, Addr szErrorWaitObject0
+            Invoke ConsoleText, Addr szCRLF
+        .ENDIF
+        
     .ELSEIF eax == WAIT_TIMEOUT
-    
+        .IF gConsoleStartedMode == TRUE
+            Invoke ConsoleText, Addr szErrorEntry
+            Invoke ConsoleText, Addr szErrorWaitTimeout
+            Invoke ConsoleText, Addr szCRLF
+        .ENDIF
+        
     .ELSEIF eax == WAIT_FAILED
-        Invoke GetLastError
-        Invoke DisplayErrorMessage, Addr szErrorWaitSingleObj, eax
-        mov eax, FALSE
-        ret    
+        .IF gConsoleStartedMode == TRUE
+            Invoke ConsoleText, Addr szErrorEntry
+            Invoke ConsoleText, Addr szErrorWaitFailed
+            Invoke ConsoleText, Addr szCRLF
+        .ELSE
+            Invoke GetLastError
+            Invoke DisplayErrorMessage, Addr szErrorWaitFailed, eax
+        .ENDIF
+        mov ReturnVal, FALSE
+        jmp InjectDLLExit   
     .ELSE    
         Invoke GetLastError
         Invoke DisplayErrorMessage, Addr szErrorWaitSingleInv, 0
-        mov eax, FALSE
-        ret               
+        mov ReturnVal, FALSE
+        jmp InjectDLLExit             
     .ENDIF
 
     Invoke GetExitCodeThread, hRemoteThread, Addr dwExitCode
     .IF eax == 0
         Invoke GetLastError
-        Invoke DisplayErrorMessage, Addr szErrorExitCodeThread, 0
-        mov eax, FALSE
-        ret   
+        Invoke DisplayErrorMessage, Addr szErrorGECTFailure, 0
+        mov ReturnVal, FALSE
+        jmp InjectDLLExit
+    .ELSE
+        .IF gConsoleStartedMode == TRUE
+            Invoke ConsoleText, Addr szStatusEntry
+            Invoke ConsoleText, Addr szStatusGECTSuccess
+            Invoke ConsoleText, Addr szCRLF
+        .ENDIF
+        mov ReturnVal, TRUE
     .ENDIF
 
-    .IF dwExitCode == STILL_ACTIVE
-        Invoke GetLastError
-        Invoke DisplayErrorMessage, Addr szErrorThreadActive, 0
-        mov eax, FALSE
-        ret       
+    mov eax, dwExitCode
+    .IF eax == STILL_ACTIVE
+        .IF gConsoleStartedMode == TRUE
+            Invoke ConsoleText, Addr szErrorEntry
+            Invoke ConsoleText, Addr szErrorThreadActive
+            Invoke ConsoleText, Addr szCRLF
+        .ELSE
+            Invoke GetLastError
+            Invoke DisplayErrorMessage, Addr szErrorThreadActive, 0
+        .ENDIF
+        mov ReturnVal, FALSE
+    
+    .ELSEIF eax == TRUE
+        .IF gConsoleStartedMode == TRUE
+            Invoke ConsoleText, Addr szErrorEntry
+            Invoke ConsoleText, Addr szStatusThreadExitTrue
+            Invoke ConsoleText, Addr szCRLF
+        .ENDIF
+        mov ReturnVal, TRUE
+        
+    .ELSEIF eax == FALSE
+        .IF gConsoleStartedMode == TRUE
+            Invoke ConsoleText, Addr szErrorEntry
+            Invoke ConsoleText, Addr szErrorThreadExitFail
+            Invoke ConsoleText, Addr szCRLF
+        .ENDIF
+        mov ReturnVal, FALSE
+        
     .ENDIF
+    
+InjectDLLExit:
     
     Invoke CloseHandle, hRemoteThread
     Invoke VirtualFreeEx, hProcess, lpLibAddress, 0, MEM_RELEASE
 
-    mov eax, dwExitCode    
+    mov eax, ReturnVal    
     ret
 InjectDLL endp
+
+
+EEEX_ALIGN
+;------------------------------------------------------------------------------
+; Checks if beamdog executable is 64bit - which means a newer game build and
+; thus would require a 64bit version of EEex.exe loader and the EEex.dll
+; Returns: eax contains 1 = 64bit, 0 = 32bit (x86), -1 = error, -2 = invalid
+;------------------------------------------------------------------------------
+IsEEGame64bit PROC USES EBX lpszEEGameExe:DWORD
+    LOCAL hFile:DWORD
+    LOCAL hMemMap:DWORD
+    LOCAL pMemMap:DWORD
+    LOCAL RetVal:DWORD
+    
+    mov RetVal, 0
+    
+    Invoke CreateFile, lpszEEGameExe, GENERIC_READ, FILE_SHARE_READ or FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL
+    .IF eax == INVALID_HANDLE_VALUE
+        IFDEF DEBUG32
+        PrintText 'IsEEGame64bit::CreateFile error'
+        ENDIF
+        mov eax, -1
+        ret
+    .ENDIF 
+    mov hFile, eax
+    
+    Invoke CreateFileMapping, hFile, NULL, PAGE_READONLY, 0, 0, NULL
+    .IF eax == NULL
+        IFDEF DEBUG32
+        PrintText 'IsEEGame64bit::CreateFileMapping error'
+        ENDIF    
+        Invoke CloseHandle, hFile
+        mov eax, -1
+        ret
+    .ENDIF
+    mov hMemMap, eax
+    
+    Invoke MapViewOfFileEx, hMemMap, FILE_MAP_READ, 0, 0, 0, NULL
+    .IF eax == NULL
+        IFDEF DEBUG32
+        PrintText 'IsEEGame64bit::MapViewOfFile error'
+        ENDIF    
+        Invoke CloseHandle, hMemMap
+        Invoke CloseHandle, hFile
+        mov eax, -1
+        ret
+    .ENDIF
+    mov pMemMap, eax ; store map view pointer
+    
+    
+    ; Check for valid PE and if 32bit or 64bit
+    mov ebx, pMemMap
+    movzx eax, word ptr [ebx].IMAGE_DOS_HEADER.e_magic
+    .IF ax == MZ_SIGNATURE
+        add ebx, [ebx].IMAGE_DOS_HEADER.e_lfanew
+        ; ebx is pointer to IMAGE_NT_HEADERS now
+        mov eax, [ebx].IMAGE_NT_HEADERS.Signature
+        .IF ax == PE_SIGNATURE
+            movzx eax, word ptr [ebx].IMAGE_NT_HEADERS.OptionalHeader.Magic
+            .IF ax == IMAGE_NT_OPTIONAL_HDR32_MAGIC
+                IFDEF DEBUG32
+                PrintText 'IsEEGame64bit::32bit'
+                ENDIF  
+                mov RetVal, 0 ; 32bit
+            .ELSEIF ax == IMAGE_NT_OPTIONAL_HDR64_MAGIC
+                IFDEF DEBUG32
+                PrintText 'IsEEGame64bit::64bit'
+                ENDIF
+                mov RetVal, 1 ; 64bit
+            .ENDIF
+        .ELSE
+            IFDEF DEBUG32
+            PrintText 'IsEEGame64bit::Invalid PE'
+            ENDIF
+            mov RetVal, -2 ; error invalid pe
+        .ENDIF
+    .ELSE
+        IFDEF DEBUG32
+        PrintText 'IsEEGame64bit::Invalid exe'
+        ENDIF
+        mov RetVal, -2 ; error invalid exe
+    .ENDIF
+    
+    ; Tidy up and close file
+    Invoke UnmapViewOfFile, pMemMap
+    Invoke CloseHandle, hMemMap
+    Invoke CloseHandle, hFile
+    
+    mov eax, RetVal
+    ret
+IsEEGame64bit ENDP
+
+
+EEEX_ALIGN
+;------------------------------------------------------------------------------
+; EnumWindowsProc - enumerates all top-level windows
+; Search for SDLapp class and if found check window title for Beamdog EE game
+;------------------------------------------------------------------------------
+EnumWindowsProc PROC USES EBX hWindow:DWORD, lParam:DWORD
+    Invoke GetClassName, hWindow, Addr szClassName, SIZEOF szClassName
+    .IF eax != 0
+        lea ebx, szClassName
+        mov eax, [ebx]
+        .IF eax == 'aLDS' ; 'SDLa'pp reversed
+            Invoke GetWindowText, hWindow, Addr szWindowTitle, SIZEOF szWindowTitle
+            .IF eax != 0
+                lea ebx, szWindowTitle
+                mov eax, [ebx]
+                .IF eax == 'dalB' || eax == 'geiS' || eax == 'wecI' || eax == 'nalP' ; Bald, Sieg, Icew, Plan
+                    mov ebx, lParam
+                    mov eax, TRUE
+                    mov [ebx], eax
+                    mov eax, FALSE
+                    ret
+                .ENDIF
+            .ENDIF
+        .ENDIF
+    .ENDIF
+    mov eax, TRUE
+    ret
+EnumWindowsProc ENDP
+
 
 EEEX_ALIGN
 ;------------------------------------------------------------------------------
@@ -909,97 +1039,34 @@ CheckFileVersion PROC USES EBX szVersionFile:DWORD, szVersion:DWORD
 CheckFileVersion endp
 ENDIF
 
+
 EEEX_ALIGN
 ;------------------------------------------------------------------------------
-; Checks if beamdog executable is 64bit - which means a newer game build and
-; thus would require a 64bit version of EEex.exe loader and the EEex.dll
-; Returns: eax contains 1 = 64bit, 0 = 32bit (x86), -1 = error, -2 = invalid
+; Displays Error Messages
 ;------------------------------------------------------------------------------
-IsEEGame64bit PROC USES EBX lpszEEGameExe:DWORD
-    LOCAL hFile:DWORD
-    LOCAL hMemMap:DWORD
-    LOCAL pMemMap:DWORD
-    LOCAL RetVal:DWORD
-    
-    mov RetVal, 0
-    
-    Invoke CreateFile, lpszEEGameExe, GENERIC_READ, FILE_SHARE_READ or FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL
-    .IF eax == INVALID_HANDLE_VALUE
-        IFDEF DEBUG32
-        PrintText 'IsEEGame64bit::CreateFile error'
-        ENDIF
-        mov eax, -1
-        ret
-    .ENDIF 
-    mov hFile, eax
-    
-    Invoke CreateFileMapping, hFile, NULL, PAGE_READONLY, 0, 0, NULL
-    .IF eax == NULL
-        IFDEF DEBUG32
-        PrintText 'IsEEGame64bit::CreateFileMapping error'
-        ENDIF    
-        Invoke CloseHandle, hFile
-        mov eax, -1
-        ret
-    .ENDIF
-    mov hMemMap, eax
-    
-    Invoke MapViewOfFileEx, hMemMap, FILE_MAP_READ, 0, 0, 0, NULL
-    .IF eax == NULL
-        IFDEF DEBUG32
-        PrintText 'IsEEGame64bit::MapViewOfFile error'
-        ENDIF    
-        Invoke CloseHandle, hMemMap
-        Invoke CloseHandle, hFile
-        mov eax, -1
-        ret
-    .ENDIF
-    mov pMemMap, eax ; store map view pointer
-    
-    
-    ; Check for valid PE and if 32bit or 64bit
-    mov ebx, pMemMap
-    movzx eax, word ptr [ebx].IMAGE_DOS_HEADER.e_magic
-    .IF ax == MZ_SIGNATURE
-        add ebx, [ebx].IMAGE_DOS_HEADER.e_lfanew
-        ; ebx is pointer to IMAGE_NT_HEADERS now
-        mov eax, [ebx].IMAGE_NT_HEADERS.Signature
-        .IF ax == PE_SIGNATURE
-            movzx eax, word ptr [ebx].IMAGE_NT_HEADERS.OptionalHeader.Magic
-            .IF ax == IMAGE_NT_OPTIONAL_HDR32_MAGIC
-                IFDEF DEBUG32
-                PrintText 'IsEEGame64bit::32bit'
-                ENDIF  
-                mov RetVal, 0 ; 32bit
-            .ELSEIF ax == IMAGE_NT_OPTIONAL_HDR64_MAGIC
-                IFDEF DEBUG32
-                PrintText 'IsEEGame64bit::64bit'
-                ENDIF
-                mov RetVal, 1 ; 64bit
-            .ENDIF
-        .ELSE
-            IFDEF DEBUG32
-            PrintText 'IsEEGame64bit::Invalid PE'
-            ENDIF
-            mov RetVal, -2 ; error invalid pe
-        .ENDIF
+DisplayErrorMessage PROC USES EDX lpszMessage:DWORD, dwError:DWORD
+    LOCAL lpError:DWORD
+    LOCAL dwLanguageId:DWORD
+
+    .IF dwError != 0
+        xor edx, edx
+        mov dl, SUBLANG_DEFAULT
+        shl edx, 10
+        or edx, LANG_NEUTRAL
+        mov dwLanguageId, edx ; dwLanguageId
+        Invoke FormatMessage, FORMAT_MESSAGE_ALLOCATE_BUFFER or FORMAT_MESSAGE_FROM_SYSTEM or FORMAT_MESSAGE_IGNORE_INSERTS, NULL, dwError, edx, Addr lpError, 0, NULL
+        Invoke wsprintf, Addr szFormatErrorMessage, Addr szFmtError, lpError, dwError
+        Invoke lstrcpy, Addr szErrorMessage, lpszMessage
+        Invoke lstrcat, Addr szErrorMessage, Addr szCRLF
+        Invoke lstrcat, Addr szErrorMessage, Addr szFormatErrorMessage
+        Invoke MessageBox, NULL, Addr szErrorMessage, Addr AppName, MB_OK
+        Invoke LocalFree, lpError
     .ELSE
-        IFDEF DEBUG32
-        PrintText 'IsEEGame64bit::Invalid exe'
-        ENDIF
-        mov RetVal, -2 ; error invalid exe
+        Invoke MessageBox, NULL, lpszMessage, Addr AppName, MB_OK
     .ENDIF
-    
-    ; Tidy up and close file
-    Invoke UnmapViewOfFile, pMemMap
-    Invoke CloseHandle, hMemMap
-    Invoke CloseHandle, hFile
-    
-    mov eax, RetVal
+    xor eax, eax
     ret
-IsEEGame64bit ENDP
-
-
+DisplayErrorMessage ENDP
 
 
 end start

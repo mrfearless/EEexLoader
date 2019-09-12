@@ -10,18 +10,11 @@ ReadFromPipe            PROTO
 .DATA
 szBackslash             DB "\",0
 
-hLogFile                DD 0
-
 gConsoleStartedMode     DD 0
 
 dwBytesRead             DD 0 
 TotalBytesAvail         DD 0 
 BytesLeftThisMessage    DD 0
-
-szLogFile               DB MAX_PATH DUP (0)
-
-szParameter1Buffer      DB MAX_PATH DUP (0)
-CmdLineParameters       DB 512 DUP (0)
 
 PIPEBUFFER              DB 4096 DUP (0) ;4096 DUP (0) - modified to 1 char as console output was cutting off/lagging until it 'filled' buffer size
 
@@ -200,10 +193,6 @@ ReadFromPipe PROC
                 PrintText 'Exit from ReadFromPipe::ReadFile'
                 ENDIF
                 ret
-            .ENDIF
-            
-            .IF hLogFile != 0
-                Invoke WriteFile, hLogFile, Addr PIPEBUFFER, dwRead, Addr dwWritten, NULL
             .ENDIF
             
             Invoke WriteFile, hParentStdOut, Addr PIPEBUFFER, dwRead, Addr dwWritten, NULL
